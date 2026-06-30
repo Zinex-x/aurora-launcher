@@ -7,13 +7,13 @@ import { LauncherShell } from "@/components/launcher/LauncherShell";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Minecraft Launcher" },
+      { title: "Electron Launcher" },
       {
         name: "description",
         content:
           "Sleek glassmorphic Minecraft launcher with light/dark themes and RU/EN localization.",
       },
-      { property: "og:title", content: "Minecraft Launcher" },
+      { property: "og:title", content: "Electron Launcher" },
       {
         property: "og:description",
         content:
