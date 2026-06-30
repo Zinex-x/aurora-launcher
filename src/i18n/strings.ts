@@ -39,6 +39,8 @@ export const strings = {
     homeTitle: "Главная",
     createTitle: "Новая сборка",
     nameRequired: "Введите название",
+    library: "Библиотека",
+    librarySubtitle: "Управляйте всеми своими сборками",
   },
   en: {
     home: "Home",
@@ -78,6 +80,8 @@ export const strings = {
     homeTitle: "Home",
     createTitle: "New Instance",
     nameRequired: "Name is required",
+    library: "Library",
+    librarySubtitle: "Manage all your Minecraft instances",
   },
 } as const;
 

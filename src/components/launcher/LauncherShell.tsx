@@ -1,7 +1,8 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { Sidebar } from "./Sidebar";
+import { Dock } from "./Dock";
 import { TopNavbar } from "./TopNavbar";
 import { HomeView } from "./views/HomeView";
+import { LibraryView } from "./views/LibraryView";
 import { CreateInstanceView } from "./views/CreateInstanceView";
 import { InstanceDetailView } from "./views/InstanceDetailView";
 import { useLauncher } from "@/context/LauncherProvider";
@@ -26,27 +27,27 @@ export function LauncherShell() {
         }}
       />
 
-      <div className="flex h-screen w-full gap-3 p-3">
-        <Sidebar />
-        <div className="flex flex-1 min-w-0 flex-col gap-3">
-          <TopNavbar />
-          <main className="glass-panel flex-1 overflow-y-auto rounded-2xl p-8">
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={viewKey}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.18 }}
-              >
-                {view.kind === "home" && <HomeView />}
-                {view.kind === "create" && <CreateInstanceView />}
-                {view.kind === "instance" && <InstanceDetailView id={view.id} />}
-              </motion.div>
-            </AnimatePresence>
-          </main>
-        </div>
+      <div className="flex h-screen w-full flex-col gap-3 p-3 pb-20">
+        <TopNavbar />
+        <main className="glass-panel flex-1 overflow-y-auto rounded-2xl p-8 scrollbar-none">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={viewKey}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18 }}
+            >
+              {view.kind === "home" && <HomeView />}
+              {view.kind === "library" && <LibraryView />}
+              {view.kind === "create" && <CreateInstanceView />}
+              {view.kind === "instance" && <InstanceDetailView id={view.id} />}
+            </motion.div>
+          </AnimatePresence>
+        </main>
       </div>
+
+      <Dock />
     </div>
   );
 }

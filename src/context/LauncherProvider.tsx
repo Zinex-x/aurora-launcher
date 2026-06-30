@@ -16,6 +16,7 @@ export type User = { nickname: string } | null;
 
 export type View =
   | { kind: "home" }
+  | { kind: "library" }
   | { kind: "create" }
   | { kind: "instance"; id: string };
 
