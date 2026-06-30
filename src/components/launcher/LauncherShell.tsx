@@ -27,7 +27,7 @@ export function LauncherShell() {
         }}
       />
 
-      <div className="flex h-screen w-full flex-col gap-3 p-3 pb-20">
+      <div className="flex h-screen w-full flex-col gap-3 p-3 pb-28">
         <TopNavbar />
         <main className="glass-panel flex-1 overflow-y-auto rounded-2xl p-8 scrollbar-none">
           <AnimatePresence mode="wait">

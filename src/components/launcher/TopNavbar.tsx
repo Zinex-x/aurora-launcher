@@ -7,7 +7,8 @@ export function TopNavbar() {
   const { t } = useT();
 
   let title = t("homeTitle");
-  if (view.kind === "create") title = t("createTitle");
+  if (view.kind === "library") title = t("library");
+  else if (view.kind === "create") title = t("createTitle");
   else if (view.kind === "instance") {
     const inst = instances.find((i) => i.id === view.id);
     title = inst?.name ?? t("homeTitle");

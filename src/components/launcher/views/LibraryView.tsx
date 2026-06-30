@@ -1,96 +1,111 @@
-import { motion } from "framer-motion";
 import { Play } from "lucide-react";
 import { useLauncher, type Instance } from "@/context/LauncherProvider";
-import { useT } from "@/context/LanguageProvider";
 import { cn } from "@/lib/utils";
+import { useT } from "@/context/LanguageProvider";
+import { motion, AnimatePresence } from "framer-motion";
+import { useState } from "react";
 
 export function LibraryView() {
-  const { instances, setView, touchInstance } = useLauncher();
+  const { instances, setView, launchInstance } = useLauncher();
   const { t } = useT();
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="space-y-6"
-    >
-      <section className="space-y-1">
-        <h2 className="font-display text-4xl font-bold tracking-tight">
-          {t("library")}
-        </h2>
-        <p className="text-muted-foreground">{t("librarySubtitle")}</p>
-      </section>
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div>
+        <h1 className="text-4xl font-bold tracking-tight text-white">{t("library")}</h1>
+        <p className="text-muted-foreground mt-1">{t("librarySubtitle")}</p>
+      </div>
 
-      <div className="flex flex-col gap-2">
+      <div className="grid gap-3">
         {instances.length === 0 ? (
-          <div className="glass-panel rounded-2xl p-12 text-center text-muted-foreground">
-            {t("noInstances")}
+          <div className="flex flex-col items-center justify-center py-20 glass rounded-3xl border border-white/5">
+            <p className="text-muted-foreground">{t("noInstances")}</p>
           </div>
         ) : (
-          instances.map((inst) => (
+          instances.map((instance) => (
             <InstanceRow
-              key={inst.id}
-              instance={inst}
-              onClick={() => setView({ kind: "instance", id: inst.id })}
-              onPlay={() => {
-                touchInstance(inst.id);
-                setView({ kind: "instance", id: inst.id });
-              }}
+              key={instance.id}
+              instance={instance}
+              onSelect={() => setView({ kind: "instance", id: instance.id })}
+              onPlay={() => launchInstance(instance.id)}
             />
           ))
         )}
       </div>
-    </motion.div>
+    </div>
   );
 }
 
 function InstanceRow({
   instance,
-  onClick,
-  onPlay,
+  onSelect,
+  onPlay
 }: {
   instance: Instance;
-  onClick: () => void;
+  onSelect: () => void;
   onPlay: () => void;
 }) {
-  const hue = instance.iconHue;
+  const { t } = useT();
+  const [isHovered, setIsHovered] = useState(false);
 
   return (
-    <button
-      onClick={onClick}
-      className="group flex w-full items-center gap-4 rounded-2xl bg-white/5 p-3 transition-colors hover:bg-white/10"
+    <div
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      onClick={onSelect}
+      className="group relative flex items-center gap-4 p-3 glass hover:bg-white/10 rounded-2xl border border-white/5 transition-all cursor-pointer overflow-hidden"
     >
-      <div className="relative size-12 shrink-0 overflow-hidden rounded-xl">
-        {/* Default Icon */}
-        <div
-          className="absolute inset-0 flex items-center justify-center font-display text-xl font-bold text-white transition-opacity duration-300 group-hover:opacity-0"
-          style={{
-            background: `linear-gradient(135deg, oklch(0.55 0.18 ${hue}), oklch(0.35 0.15 ${(hue + 40) % 360}))`,
-          }}
-        >
-          {instance.name.slice(0, 1).toUpperCase()}
-        </div>
+      <div className="relative size-12 shrink-0">
+        <AnimatePresence mode="wait">
+          {!isHovered ? (
+            <motion.div
+              key="icon"
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.8, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="absolute inset-0 flex items-center justify-center rounded-xl font-bold text-white uppercase text-lg shadow-lg"
+              style={{
+                background: `linear-gradient(135deg, oklch(0.7 0.2 ${instance.iconHue}), oklch(0.5 0.2 ${instance.iconHue + 40}))`
+              }}
+            >
+              {instance.name.charAt(0)}
+            </motion.div>
+          ) : (
+            <motion.button
+              key="play"
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.8, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              onClick={(e) => {
+                e.stopPropagation();
+                onPlay();
+              }}
+              title={t("play")}
+              className="absolute inset-0 flex items-center justify-center rounded-full bg-[#22c55e] text-white shadow-[0_0_20px_rgba(34,197,94,0.5)] hover:scale-105 transition-transform"
+            >
+              <Play className="size-6 fill-current ml-0.5" />
+            </motion.button>
+          )}
+        </AnimatePresence>
+      </div>
 
-        {/* Hover Play Button */}
-        <div
-          className="absolute inset-0 flex items-center justify-center bg-green-500 text-white opacity-0 transition-all duration-300 group-hover:opacity-100 group-hover:scale-100 scale-75 rounded-full"
-          onClick={(e) => {
-            e.stopPropagation();
-            onPlay();
-          }}
-        >
-          <Play className="size-6 fill-current translate-x-0.5" />
+      <div className="flex-1 min-w-0">
+        <h3 className="font-semibold text-white truncate">{instance.name}</h3>
+        <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+          <span className="px-1.5 py-0.5 rounded bg-white/5 border border-white/10 uppercase tracking-wider font-medium">
+            {instance.modloader}
+          </span>
+          <span>{instance.version}</span>
         </div>
       </div>
 
-      <div className="flex flex-1 flex-col items-start overflow-hidden">
-        <span className="w-full truncate text-left font-semibold leading-tight">
-          {instance.name}
-        </span>
-        <span className="text-xs text-muted-foreground uppercase tracking-wider">
-          {instance.modloader} {instance.version}
-        </span>
+      <div className="hidden sm:block px-4">
+        <div className="text-xs text-muted-foreground text-right">
+          {instance.lastPlayed ? new Date(instance.lastPlayed).toLocaleDateString() : t("never")}
+        </div>
       </div>
-    </button>
+    </div>
   );
 }
