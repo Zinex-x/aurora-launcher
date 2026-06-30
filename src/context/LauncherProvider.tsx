@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { toast } from "sonner";
 
 export type Modloader = "vanilla" | "forge" | "fabric";
 
@@ -26,6 +27,7 @@ type Ctx = {
   instances: Instance[];
   addInstance: (i: Omit<Instance, "id" | "createdAt" | "lastPlayed" | "iconHue">) => Instance;
   touchInstance: (id: string) => void;
+  launchInstance: (id: string) => void;
   user: User;
   setUser: (u: User) => void;
 };
@@ -73,9 +75,32 @@ export function LauncherProvider({ children }: { children: ReactNode }) {
   const touchInstance = (id: string) =>
     setInstances((prev) => prev.map((i) => (i.id === id ? { ...i, lastPlayed: Date.now() } : i)));
 
+  const launchInstance = (id: string) => {
+    const inst = instances.find(i => i.id === id);
+    if (!inst) return;
+
+    touchInstance(id);
+    toast.success(`Launching ${inst.name}...`, {
+      description: `Minecraft ${inst.version} (${inst.modloader})`,
+      icon: "🚀"
+    });
+
+    // In a real Electron app, this would use window.electron.launch(...)
+    console.log("ELECTRON: Launching instance", inst);
+  };
+
   return (
     <LauncherContext.Provider
-      value={{ view, setView, instances, addInstance, touchInstance, user, setUser: setUserState }}
+      value={{
+        view,
+        setView,
+        instances,
+        addInstance,
+        touchInstance,
+        launchInstance,
+        user,
+        setUser: setUserState
+      }}
     >
       {children}
     </LauncherContext.Provider>

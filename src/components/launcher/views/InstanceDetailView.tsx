@@ -7,7 +7,7 @@ import { ModloaderBadge } from "../ModloaderBadge";
 import { cn } from "@/lib/utils";
 
 export function InstanceDetailView({ id }: { id: string }) {
-  const { instances, touchInstance } = useLauncher();
+  const { instances, launchInstance } = useLauncher();
   const { t, lang } = useT();
   const inst = instances.find((i) => i.id === id);
   const [tab, setTab] = useState<"mods" | "settings" | "skin">("mods");
@@ -60,7 +60,7 @@ export function InstanceDetailView({ id }: { id: string }) {
             <motion.button
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
-              onClick={() => touchInstance(inst.id)}
+              onClick={() => launchInstance(inst.id)}
               className="flex items-center justify-center gap-3 rounded-2xl bg-primary px-10 py-5 font-display text-2xl font-bold tracking-widest text-primary-foreground glow-grass"
             >
               <Play className="size-7 fill-current" />

@@ -1,44 +1,46 @@
 import { Home, Library, Plus, Settings } from "lucide-react";
-import { motion } from "framer-motion";
-import { useLauncher } from "@/context/LauncherProvider";
-import { useT } from "@/context/LanguageProvider";
-import { SettingsPopover } from "./SettingsPopover";
+import { useLauncher, type Instance } from "@/context/LauncherProvider";
 import { cn } from "@/lib/utils";
+import { SettingsPopover } from "./SettingsPopover";
+
+import { useT } from "@/context/LanguageProvider";
 
 export function Dock() {
-  const { view, setView, instances } = useLauncher();
   const { t } = useT();
+  const { view, setView, instances } = useLauncher();
 
-  const isHome = view.kind === "home";
-  const isLibrary = view.kind === "library";
-  const isCreate = view.kind === "create";
-
-  const lastPlayedInstance = [...instances]
+  // Get last played instance
+  const lastPlayed = instances
     .filter((i) => i.lastPlayed !== null)
     .sort((a, b) => (b.lastPlayed || 0) - (a.lastPlayed || 0))[0];
 
+  const activeClass = "bg-[var(--primary)] text-[var(--primary-foreground)] shadow-[0_8px_24px_-8px_oklch(from_var(--primary)_l_c_h_/_0.6)]";
+  const inactiveClass = "text-[var(--muted-foreground)] hover:text-[var(--foreground)]";
+
   return (
-    <div className="fixed bottom-0 inset-x-0 pb-4 flex justify-center z-40 pointer-events-none">
-      <div className="glass rounded-full p-2 flex items-center gap-1 pointer-events-auto shadow-2xl">
+    <nav className="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-4 pb-4">
+      <div className="glass pointer-events-auto flex items-center gap-1 rounded-full p-2 border border-white/10 shadow-lg">
         {/* Left Zone */}
         <div className="flex items-center gap-1">
-          <DockBtn
-            title={t("home")}
-            active={isHome}
+          <DockButton
+            active={view.kind === "home"}
             onClick={() => setView({ kind: "home" })}
-          >
-            <Home className="size-5" />
-          </DockBtn>
-          <DockBtn
-            title={t("library")}
-            active={isLibrary}
+            icon={<Home className="size-5" />}
+            title={t("home")}
+          />
+          <DockButton
+            active={view.kind === "library"}
             onClick={() => setView({ kind: "library" })}
-          >
-            <Library className="size-5" />
-          </DockBtn>
+            icon={<Library className="size-5" />}
+            title={t("library")}
+          />
           <SettingsPopover
             side="top"
-            className="text-[var(--muted-foreground)] hover:text-[var(--foreground)] hover:bg-white/10"
+            title={t("settings")}
+            className={cn(
+              "size-10 flex items-center justify-center rounded-full transition-all",
+              inactiveClass
+            )}
           />
         </div>
 
@@ -47,66 +49,62 @@ export function Dock() {
 
         {/* Right Zone */}
         <div className="flex items-center gap-1">
-          <DockBtn
-            title={t("createInstance")}
-            active={isCreate}
+          <DockButton
+            active={view.kind === "create"}
             onClick={() => setView({ kind: "create" })}
-          >
-            <Plus className="size-5" />
-          </DockBtn>
-
-          {lastPlayedInstance && (
-            <motion.button
-              whileHover={{ scale: 1.1, y: -2 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => setView({ kind: "instance", id: lastPlayedInstance.id })}
-              title={lastPlayedInstance.name}
+            icon={<Plus className="size-5" />}
+            title={t("createInstance")}
+          />
+          {lastPlayed && (
+            <button
+              onClick={() => setView({ kind: "instance", id: lastPlayed.id })}
+              title={lastPlayed.name}
               className={cn(
-                "relative size-10 overflow-hidden rounded-full border transition-all",
-                view.kind === "instance" && view.id === lastPlayedInstance.id
-                  ? "border-primary ring-2 ring-primary/40 shadow-[0_8px_24px_-8px_oklch(from_var(--primary)_l_c_h_/_0.6)]"
-                  : "border-white/10 hover:border-white/30",
+                "group relative flex size-10 items-center justify-center rounded-full transition-all overflow-hidden",
+                view.kind === "instance" && view.id === lastPlayed.id
+                  ? "ring-2 ring-primary ring-offset-2 ring-offset-background"
+                  : "hover:scale-105"
               )}
-              style={{
-                background: `linear-gradient(135deg, oklch(0.55 0.18 ${lastPlayedInstance.iconHue}), oklch(0.35 0.15 ${(lastPlayedInstance.iconHue + 40) % 360}))`,
-              }}
             >
-              <span className="flex items-center justify-center h-full w-full font-display text-sm font-bold text-white drop-shadow">
-                {lastPlayedInstance.name.slice(0, 1).toUpperCase()}
-              </span>
-            </motion.button>
+              <div
+                className="absolute inset-0 flex items-center justify-center font-bold text-white text-xs uppercase"
+                style={{
+                  background: `linear-gradient(135deg, oklch(0.7 0.2 ${lastPlayed.iconHue}), oklch(0.5 0.2 ${lastPlayed.iconHue + 40}))`
+                }}
+              >
+                {lastPlayed.name.charAt(0)}
+              </div>
+            </button>
           )}
         </div>
       </div>
-    </div>
+    </nav>
   );
 }
 
-function DockBtn({
-  children,
-  title,
+function DockButton({
   active,
   onClick,
+  icon,
+  title
 }: {
-  children: React.ReactNode;
-  title: string;
-  active?: boolean;
+  active: boolean;
   onClick: () => void;
+  icon: React.ReactNode;
+  title?: string;
 }) {
   return (
-    <motion.button
-      whileHover={{ scale: 1.1, y: -2 }}
-      whileTap={{ scale: 0.95 }}
+    <button
       onClick={onClick}
       title={title}
       className={cn(
         "flex size-10 items-center justify-center rounded-full transition-all",
         active
           ? "bg-[var(--primary)] text-[var(--primary-foreground)] shadow-[0_8px_24px_-8px_oklch(from_var(--primary)_l_c_h_/_0.6)]"
-          : "text-[var(--muted-foreground)] hover:text-[var(--foreground)] hover:bg-white/10",
+          : "text-[var(--muted-foreground)] hover:text-[var(--foreground)] hover:bg-white/5 hover:shadow-[0_4px_12px_-4px_oklch(from_var(--primary)_l_c_h_/_0.3)]"
       )}
     >
-      {children}
-    </motion.button>
+      {icon}
+    </button>
   );
 }
