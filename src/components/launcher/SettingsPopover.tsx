@@ -4,7 +4,13 @@ import { useTheme } from "@/context/ThemeProvider";
 import { useT } from "@/context/LanguageProvider";
 import { cn } from "@/lib/utils";
 
-export function SettingsPopover() {
+export function SettingsPopover({
+  side = "right",
+  className,
+}: {
+  side?: "top" | "right" | "bottom" | "left";
+  className?: string;
+}) {
   const { theme, setTheme } = useTheme();
   const { lang, setLang, t } = useT();
 
@@ -12,13 +18,21 @@ export function SettingsPopover() {
     <Popover>
       <PopoverTrigger asChild>
         <button
-          className="flex size-12 items-center justify-center rounded-xl glass-panel hover:bg-white/10 transition-colors"
+          className={cn(
+            "flex size-10 items-center justify-center rounded-full transition-colors",
+            className,
+          )}
           aria-label={t("settings")}
         >
           <Settings className="size-5" />
         </button>
       </PopoverTrigger>
-      <PopoverContent side="right" align="end" className="w-64 glass-panel-strong rounded-2xl border-0 p-4">
+      <PopoverContent
+        side={side}
+        align="center"
+        sideOffset={12}
+        className="w-64 glass-panel-strong rounded-2xl border-0 p-4"
+      >
         <div className="space-y-4">
           <div>
             <div className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
