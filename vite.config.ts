@@ -5,7 +5,13 @@ import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 
 export default defineConfig({
-  plugins: [TanStackRouterVite(), react(), tailwindcss()],
+  // Теперь Vite правильно применит относительные пути в продакшене!
+  base: process.env.NODE_ENV === 'production' ? './' : '/',
+  plugins: [
+    TanStackRouterVite(),
+    react(),
+    tailwindcss(),
+  ],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
@@ -14,5 +20,6 @@ export default defineConfig({
   build: {
     outDir: "dist",
     emptyOutDir: true,
-  },
+    assetsDir: "assets",
+  }
 });
