@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { Dock } from "./Dock";
 import { TopNavbar } from "./TopNavbar";
+import { Titlebar } from "./Titlebar";
 import { HomeView } from "./views/HomeView";
 import { LibraryView } from "./views/LibraryView";
 import { CreateInstanceView } from "./views/CreateInstanceView";
@@ -14,7 +15,8 @@ export function LauncherShell() {
   const viewKey = view.kind === "instance" ? `instance:${view.id}` : view.kind;
 
   return (
-    <div className="relative min-h-screen w-full overflow-hidden">
+    <div className="relative flex min-h-screen w-full flex-col overflow-hidden">
+      <Titlebar />
       {/* Background image */}
       <div
         className="pointer-events-none fixed inset-0 -z-20 bg-cover bg-center"
@@ -29,7 +31,7 @@ export function LauncherShell() {
         }}
       />
 
-      <div className="flex h-screen w-full flex-col gap-3 p-3 pb-28">
+      <div className="flex flex-1 w-full flex-col gap-3 p-3 pb-28">
         <TopNavbar />
         <main className="glass-panel flex-1 overflow-y-auto rounded-2xl p-8 scrollbar-none">
           <AnimatePresence mode="wait">
