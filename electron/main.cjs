@@ -15,7 +15,7 @@ function createWindow() {
     titleBarStyle: "hidden",
     backgroundColor: "#0a0a0a",
     webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
+      preload: path.join(__dirname, "preload.cjs"),
       sandbox: false,
       nodeIntegration: false,
       contextIsolation: true,
