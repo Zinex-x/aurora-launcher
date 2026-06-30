@@ -72,12 +72,19 @@ export function LauncherProvider({ children }: { children: ReactNode }) {
   }, [instances, user]);
 
   const addInstance: Ctx["addInstance"] = (i) => {
+    // Deterministic hue based on name
+    let hash = 0;
+    for (let j = 0; j < i.name.length; j++) {
+      hash = i.name.charCodeAt(j) + ((hash << 5) - hash);
+    }
+    const hue = Math.abs(hash) % 360;
+
     const inst: Instance = {
       ...i,
       id: crypto.randomUUID(),
       createdAt: Date.now(),
       lastPlayed: null,
-      iconHue: Math.floor(Math.random() * 360),
+      iconHue: hue,
     };
     setInstances((prev) => [inst, ...prev]);
     return inst;
