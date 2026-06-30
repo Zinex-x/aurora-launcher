@@ -13,7 +13,12 @@ export type Instance = {
   iconHue: number;
 };
 
-export type User = { nickname: string } | null;
+export type User = {
+  nickname: string;
+  uuid?: string;
+  accessToken?: string;
+  skin?: string;
+} | null;
 
 export type View =
   { kind: "home" } | { kind: "library" } | { kind: "create" } | { kind: "instance"; id: string };

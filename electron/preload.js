@@ -10,4 +10,5 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.on("window-maximized", subscription);
     return () => ipcRenderer.removeListener("window-maximized", subscription);
   },
+  loginWithMicrosoft: () => ipcRenderer.invoke("microsoft-login"),
 });

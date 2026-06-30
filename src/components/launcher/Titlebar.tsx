@@ -22,13 +22,13 @@ export function Titlebar() {
 
   return (
     <div
-      className="flex h-12 w-full select-none items-center justify-between border-b border-white/5 bg-[#0a0a0a] px-4"
+      className="flex h-12 w-full select-none items-center justify-between border-b border-white/5 bg-transparent px-4"
       style={{ "-webkit-app-region": "drag" } as CSSProperties}
     >
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-2">
           <div className="size-5 rounded bg-primary/20 flex items-center justify-center border border-primary/30">
-            <div className="size-2.5 rounded-full bg-primary shadow-[0_0_8px_rgba(var(--primary-rgb),0.5)]" />
+            <div className="size-2.5 rounded-full bg-primary shadow-[0_0_8px_var(--grass-glow)]" />
           </div>
           <span className="text-xs font-bold uppercase tracking-[0.2em] text-muted-foreground/80">
             Electron Launcher
@@ -42,21 +42,31 @@ export function Titlebar() {
       >
         <button
           onClick={onMinimize}
-          className="group flex h-12 w-12 items-center justify-center text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground"
+          className="group relative flex h-12 w-12 items-center justify-center text-muted-foreground transition-all duration-300 hover:text-foreground"
         >
-          <Minus className="size-4" />
+          <div className="absolute inset-0 bg-primary/0 transition-all group-hover:bg-primary/5" />
+          <div className="absolute inset-x-0 bottom-0 h-[1px] scale-x-0 bg-primary transition-transform duration-300 group-hover:scale-x-100" />
+          <Minus className="relative size-4" />
         </button>
         <button
           onClick={onMaximize}
-          className="group flex h-12 w-12 items-center justify-center text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground"
+          className="group relative flex h-12 w-12 items-center justify-center text-muted-foreground transition-all duration-300 hover:text-foreground"
         >
-          {isMaximized ? <Copy className="size-3.5 rotate-180" /> : <Square className="size-3.5" />}
+          <div className="absolute inset-0 bg-primary/0 transition-all group-hover:bg-primary/5" />
+          <div className="absolute inset-x-0 bottom-0 h-[1px] scale-x-0 bg-primary transition-transform duration-300 group-hover:scale-x-100" />
+          {isMaximized ? (
+            <Copy className="relative size-3.5 rotate-180" />
+          ) : (
+            <Square className="relative size-3.5" />
+          )}
         </button>
         <button
           onClick={onClose}
-          className="group flex h-12 w-12 items-center justify-center text-muted-foreground transition-colors hover:bg-red-500/80 hover:text-white"
+          className="group relative flex h-12 w-12 items-center justify-center text-muted-foreground transition-all duration-300 hover:text-white"
         >
-          <X className="size-4" />
+          <div className="absolute inset-0 bg-destructive/0 transition-all group-hover:bg-destructive/10" />
+          <div className="absolute inset-x-0 bottom-0 h-[1px] scale-x-0 bg-destructive transition-transform duration-300 group-hover:scale-x-100" />
+          <X className="relative size-4" />
         </button>
       </div>
     </div>
