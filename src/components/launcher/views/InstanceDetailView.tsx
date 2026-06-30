@@ -29,8 +29,12 @@ export function InstanceDetailView({ id }: { id: string }) {
             background: `linear-gradient(135deg, oklch(0.45 0.18 ${inst.iconHue}), oklch(0.28 0.15 ${(inst.iconHue + 60) % 360}))`,
           }}
         >
-          <div className="absolute inset-0 opacity-40 mix-blend-overlay"
-            style={{ backgroundImage: "radial-gradient(circle at 20% 20%, rgba(255,255,255,.5), transparent 60%)" }}
+          <div
+            className="absolute inset-0 opacity-40 mix-blend-overlay"
+            style={{
+              backgroundImage:
+                "radial-gradient(circle at 20% 20%, rgba(255,255,255,.5), transparent 60%)",
+            }}
           />
         </div>
         <div className="-mt-16 p-7 relative">
@@ -72,7 +76,11 @@ export function InstanceDetailView({ id }: { id: string }) {
             <Stat label={t("version")} value={inst.version} />
             <Stat
               label={t("lastPlayed")}
-              value={inst.lastPlayed ? new Date(inst.lastPlayed).toLocaleString(lang === "ru" ? "ru-RU" : "en-US") : t("never")}
+              value={
+                inst.lastPlayed
+                  ? new Date(inst.lastPlayed).toLocaleString(lang === "ru" ? "ru-RU" : "en-US")
+                  : t("never")
+              }
             />
           </div>
         </div>
@@ -86,7 +94,9 @@ export function InstanceDetailView({ id }: { id: string }) {
               onClick={() => setTab(tb.id)}
               className={cn(
                 "flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-all",
-                tab === tb.id ? "bg-white/10 text-foreground" : "text-muted-foreground hover:text-foreground",
+                tab === tb.id
+                  ? "bg-white/10 text-foreground"
+                  : "text-muted-foreground hover:text-foreground",
               )}
             >
               <tb.icon className="size-4" />

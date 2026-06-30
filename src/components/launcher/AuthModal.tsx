@@ -3,7 +3,13 @@ import { useT } from "@/context/LanguageProvider";
 import { useLauncher } from "@/context/LauncherProvider";
 import { Loader2 } from "lucide-react";
 
-export function AuthModal({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+export function AuthModal({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+}) {
   const { t } = useT();
   const { setUser } = useLauncher();
 

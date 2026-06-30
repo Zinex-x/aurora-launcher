@@ -6,6 +6,7 @@ import { LibraryView } from "./views/LibraryView";
 import { CreateInstanceView } from "./views/CreateInstanceView";
 import { InstanceDetailView } from "./views/InstanceDetailView";
 import { useLauncher } from "@/context/LauncherProvider";
+import { SettingsModal } from "./SettingsModal";
 import bgImg from "@/assets/launcher-bg.jpg";
 
 export function LauncherShell() {
@@ -20,7 +21,8 @@ export function LauncherShell() {
         style={{ backgroundImage: `url(${bgImg})` }}
       />
       {/* Gradient overlay (themed) */}
-      <div className="pointer-events-none fixed inset-0 -z-10"
+      <div
+        className="pointer-events-none fixed inset-0 -z-10"
         style={{
           background:
             "radial-gradient(1200px 800px at 80% -10%, color-mix(in oklch, var(--primary) 18%, transparent), transparent 60%), linear-gradient(180deg, color-mix(in oklch, var(--background) 65%, transparent), color-mix(in oklch, var(--background) 88%, transparent))",
@@ -48,6 +50,7 @@ export function LauncherShell() {
       </div>
 
       <Dock />
+      <SettingsModal />
     </div>
   );
 }

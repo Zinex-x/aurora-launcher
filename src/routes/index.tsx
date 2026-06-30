@@ -8,9 +8,17 @@ export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
       { title: "Minecraft Launcher" },
-      { name: "description", content: "Sleek glassmorphic Minecraft launcher with light/dark themes and RU/EN localization." },
+      {
+        name: "description",
+        content:
+          "Sleek glassmorphic Minecraft launcher with light/dark themes and RU/EN localization.",
+      },
       { property: "og:title", content: "Minecraft Launcher" },
-      { property: "og:description", content: "Sleek glassmorphic Minecraft launcher with light/dark themes and RU/EN localization." },
+      {
+        property: "og:description",
+        content:
+          "Sleek glassmorphic Minecraft launcher with light/dark themes and RU/EN localization.",
+      },
     ],
   }),
   component: Index,

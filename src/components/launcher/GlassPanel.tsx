@@ -8,11 +8,7 @@ export function GlassPanel({
 }: HTMLAttributes<HTMLDivElement> & { strong?: boolean }) {
   return (
     <div
-      className={cn(
-        strong ? "glass-panel-strong" : "glass-panel",
-        "rounded-2xl",
-        className,
-      )}
+      className={cn(strong ? "glass-panel-strong" : "glass-panel", "rounded-2xl", className)}
       {...props}
     />
   );

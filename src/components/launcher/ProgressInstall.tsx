@@ -40,7 +40,10 @@ export function ProgressInstall({ onDone }: { onDone: () => void }) {
           style={{ width: `${pct}%` }}
           transition={{ ease: "linear" }}
         />
-        <div className="absolute inset-0 rounded-full" style={{ boxShadow: "inset 0 0 12px rgba(255,255,255,.05)" }} />
+        <div
+          className="absolute inset-0 rounded-full"
+          style={{ boxShadow: "inset 0 0 12px rgba(255,255,255,.05)" }}
+        />
       </div>
     </div>
   );

@@ -41,6 +41,19 @@ export const strings = {
     nameRequired: "Введите название",
     library: "Библиотека",
     librarySubtitle: "Управляйте всеми своими сборками",
+    // Settings categories
+    appearance: "Внешний вид",
+    privacy: "Конфиденциальность",
+    javaInstallations: "Установки Java",
+    defaultInstanceOptions: "Опции по умолчанию",
+    resourceManagement: "Управление ресурсами",
+    accentColor: "Акцентный цвет",
+    cyan: "Голубой",
+    green: "Зелёный",
+    purple: "Фиолетовый",
+    red: "Красный",
+    orange: "Оранжевый",
+    placeholderComingSoon: "Этот раздел находится в разработке и появится в будущих версиях.",
   },
   en: {
     home: "Home",
@@ -82,6 +95,20 @@ export const strings = {
     nameRequired: "Name is required",
     library: "Library",
     librarySubtitle: "Manage all your Minecraft instances",
+    // Settings categories
+    appearance: "Appearance",
+    privacy: "Privacy",
+    javaInstallations: "Java installations",
+    defaultInstanceOptions: "Default instance options",
+    resourceManagement: "Resource management",
+    accentColor: "Accent color",
+    cyan: "Cyan",
+    green: "Green",
+    purple: "Purple",
+    red: "Red",
+    orange: "Orange",
+    placeholderComingSoon:
+      "This section is currently under development and will be available in future updates.",
   },
 } as const;
 
