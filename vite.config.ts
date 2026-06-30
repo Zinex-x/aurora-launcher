@@ -19,4 +19,10 @@ export default defineConfig({
     outDir: "dist",
     emptyOutDir: true,
   },
+  vite: {
+    base: "./",
+    build: {
+      assetsDir: "assets",
+    }
+  }
 });
