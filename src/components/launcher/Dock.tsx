@@ -1,21 +1,16 @@
 import { Home, Library, Plus, Settings } from "lucide-react";
 import { useLauncher, type Instance } from "@/context/LauncherProvider";
 import { cn } from "@/lib/utils";
-import { SettingsPopover } from "./SettingsPopover";
-
 import { useT } from "@/context/LanguageProvider";
 
 export function Dock() {
   const { t } = useT();
-  const { view, setView, instances } = useLauncher();
+  const { view, setView, instances, setSettingsOpen } = useLauncher();
 
   // Get last played instance
   const lastPlayed = instances
     .filter((i) => i.lastPlayed !== null)
     .sort((a, b) => (b.lastPlayed || 0) - (a.lastPlayed || 0))[0];
-
-  const activeClass = "bg-[var(--primary)] text-[var(--primary-foreground)] shadow-[0_8px_24px_-8px_oklch(from_var(--primary)_l_c_h_/_0.6)]";
-  const inactiveClass = "text-[var(--muted-foreground)] hover:text-[var(--foreground)]";
 
   return (
     <nav className="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-4 pb-4">
@@ -34,13 +29,11 @@ export function Dock() {
             icon={<Library className="size-5" />}
             title={t("library")}
           />
-          <SettingsPopover
-            side="top"
+          <DockButton
+            active={false}
+            onClick={() => setSettingsOpen(true)}
+            icon={<Settings className="size-5" />}
             title={t("settings")}
-            className={cn(
-              "size-10 flex items-center justify-center rounded-full transition-all",
-              inactiveClass
-            )}
           />
         </div>
 
@@ -63,13 +56,13 @@ export function Dock() {
                 "group relative flex size-10 items-center justify-center rounded-full transition-all overflow-hidden",
                 view.kind === "instance" && view.id === lastPlayed.id
                   ? "ring-2 ring-primary ring-offset-2 ring-offset-background"
-                  : "hover:scale-105"
+                  : "hover:scale-105",
               )}
             >
               <div
                 className="absolute inset-0 flex items-center justify-center font-bold text-white text-xs uppercase"
                 style={{
-                  background: `linear-gradient(135deg, oklch(0.7 0.2 ${lastPlayed.iconHue}), oklch(0.5 0.2 ${lastPlayed.iconHue + 40}))`
+                  background: `linear-gradient(135deg, oklch(0.7 0.2 ${lastPlayed.iconHue}), oklch(0.5 0.2 ${lastPlayed.iconHue + 40}))`,
                 }}
               >
                 {lastPlayed.name.charAt(0)}
@@ -86,7 +79,7 @@ function DockButton({
   active,
   onClick,
   icon,
-  title
+  title,
 }: {
   active: boolean;
   onClick: () => void;
@@ -101,7 +94,7 @@ function DockButton({
         "flex size-10 items-center justify-center rounded-full transition-all",
         active
           ? "bg-[var(--primary)] text-[var(--primary-foreground)] shadow-[0_8px_24px_-8px_oklch(from_var(--primary)_l_c_h_/_0.6)]"
-          : "text-[var(--muted-foreground)] hover:text-[var(--foreground)] hover:bg-white/5 hover:shadow-[0_4px_12px_-4px_oklch(from_var(--primary)_l_c_h_/_0.3)]"
+          : "text-[var(--muted-foreground)] hover:text-[var(--foreground)] hover:bg-white/5 hover:shadow-[0_4px_12px_-4px_oklch(from_var(--primary)_l_c_h_/_0.3)]",
       )}
     >
       {icon}

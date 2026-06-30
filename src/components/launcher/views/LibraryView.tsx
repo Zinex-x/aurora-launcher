@@ -39,7 +39,7 @@ export function LibraryView() {
 function InstanceRow({
   instance,
   onSelect,
-  onPlay
+  onPlay,
 }: {
   instance: Instance;
   onSelect: () => void;
@@ -66,7 +66,7 @@ function InstanceRow({
               transition={{ duration: 0.2 }}
               className="absolute inset-0 flex items-center justify-center rounded-xl font-bold text-white uppercase text-lg shadow-lg"
               style={{
-                background: `linear-gradient(135deg, oklch(0.7 0.2 ${instance.iconHue}), oklch(0.5 0.2 ${instance.iconHue + 40}))`
+                background: `linear-gradient(135deg, oklch(0.7 0.2 ${instance.iconHue}), oklch(0.5 0.2 ${instance.iconHue + 40}))`,
               }}
             >
               {instance.name.charAt(0)}
@@ -83,7 +83,7 @@ function InstanceRow({
                 onPlay();
               }}
               title={t("play")}
-              className="absolute inset-0 flex items-center justify-center rounded-full bg-[#22c55e] text-white shadow-[0_0_20px_rgba(34,197,94,0.5)] hover:scale-105 transition-transform"
+              className="absolute inset-0 flex items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[0_0_20px_var(--grass-glow)] hover:scale-105 transition-transform"
             >
               <Play className="size-6 fill-current ml-0.5" />
             </motion.button>

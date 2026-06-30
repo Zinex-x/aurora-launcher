@@ -19,15 +19,17 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
 
   const setLang = (l: Lang) => {
     setLangState(l);
-    try { localStorage.setItem("lang", l); } catch { /* noop */ }
+    try {
+      localStorage.setItem("lang", l);
+    } catch {
+      /* noop */
+    }
   };
 
   const t = (k: StringKey) => strings[lang][k] ?? k;
 
   return (
-    <LanguageContext.Provider value={{ lang, setLang, t }}>
-      {children}
-    </LanguageContext.Provider>
+    <LanguageContext.Provider value={{ lang, setLang, t }}>{children}</LanguageContext.Provider>
   );
 }
 

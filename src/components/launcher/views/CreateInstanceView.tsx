@@ -18,7 +18,10 @@ export function CreateInstanceView() {
   const [error, setError] = useState("");
 
   const submit = () => {
-    if (!name.trim()) { setError(t("nameRequired")); return; }
+    if (!name.trim()) {
+      setError(t("nameRequired"));
+      return;
+    }
     setError("");
     setPhase("progress");
   };
@@ -66,7 +69,9 @@ export function CreateInstanceView() {
                   className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-base outline-none focus:border-primary/50 focus:bg-white/10 transition-all appearance-none"
                 >
                   {VERSIONS.map((v) => (
-                    <option key={v} value={v} className="bg-background">{v}</option>
+                    <option key={v} value={v} className="bg-background">
+                      {v}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -77,7 +82,12 @@ export function CreateInstanceView() {
                 </label>
                 <div className="flex flex-wrap gap-2">
                   {(["vanilla", "forge", "fabric"] as const).map((m) => (
-                    <ModloaderBadge key={m} loader={m} active={loader === m} onClick={() => setLoader(m)} />
+                    <ModloaderBadge
+                      key={m}
+                      loader={m}
+                      active={loader === m}
+                      onClick={() => setLoader(m)}
+                    />
                   ))}
                 </div>
               </div>
@@ -93,7 +103,12 @@ export function CreateInstanceView() {
           )}
 
           {phase === "progress" && (
-            <motion.div key="progress" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6 py-6">
+            <motion.div
+              key="progress"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="space-y-6 py-6"
+            >
               <h2 className="font-display text-xl font-semibold text-center">{t("creating")}</h2>
               <ProgressInstall onDone={onDone} />
             </motion.div>

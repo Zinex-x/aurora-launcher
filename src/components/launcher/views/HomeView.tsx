@@ -19,9 +19,7 @@ export function HomeView() {
       className="space-y-10"
     >
       <section className="space-y-3">
-        <h2 className="font-display text-4xl font-bold tracking-tight">
-          {t("welcome")}
-        </h2>
+        <h2 className="font-display text-4xl font-bold tracking-tight">{t("welcome")}</h2>
         <p className="text-muted-foreground max-w-xl">{t("welcomeSubtitle")}</p>
       </section>
 
