@@ -20,7 +20,7 @@ export default defineConfig({
     emptyOutDir: true,
   },
   vite: {
-    base: "./",
+    base: process.env.NODE_ENV === 'production' ? './' : '/',
     build: {
       assetsDir: "assets",
     }
