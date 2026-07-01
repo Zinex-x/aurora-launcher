@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { Play, Package, Settings as SettingsIcon, User } from "lucide-react";
+import { Play, Package, Settings as SettingsIcon, Square } from "lucide-react";
 import { useState } from "react";
 import { useLauncher } from "@/context/LauncherProvider";
 import { useT } from "@/context/LanguageProvider";
@@ -7,18 +7,18 @@ import { ModloaderBadge } from "../ModloaderBadge";
 import { cn } from "@/lib/utils";
 
 export function InstanceDetailView({ id }: { id: string }) {
-  const { instances, launchInstance } = useLauncher();
+  const { instances, launchInstance, killInstance, runningInstance, setInstanceSettingsOpen } = useLauncher();
   const { t, lang } = useT();
   const inst = instances.find((i) => i.id === id);
-  const [tab, setTab] = useState<"mods" | "settings" | "skin">("mods");
+  const [tab, setTab] = useState<"mods">("mods");
 
   if (!inst) return null;
 
   const tabs = [
     { id: "mods" as const, label: t("mods"), icon: Package },
-    { id: "settings" as const, label: t("instanceSettings"), icon: SettingsIcon },
-    { id: "skin" as const, label: t("skin"), icon: User },
   ];
+
+  const isRunning = runningInstance === inst.name;
 
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
@@ -61,15 +61,38 @@ export function InstanceDetailView({ id }: { id: string }) {
               </div>
             </div>
 
-            <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => launchInstance(inst.id)}
-              className="flex items-center justify-center gap-3 rounded-2xl bg-primary px-10 py-5 font-display text-2xl font-bold tracking-widest text-primary-foreground glow-grass"
-            >
-              <Play className="size-7 fill-current" />
-              {t("play")}
-            </motion.button>
+            <div className="flex items-center gap-3">
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => setInstanceSettingsOpen(true)}
+                className="flex items-center justify-center rounded-2xl bg-white/5 border border-white/10 p-5 text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <SettingsIcon className="size-7" />
+              </motion.button>
+
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => (isRunning ? killInstance() : launchInstance(inst.id))}
+                className={cn(
+                  "flex items-center justify-center gap-3 rounded-2xl px-10 py-5 font-display text-2xl font-bold tracking-widest text-primary-foreground",
+                  isRunning ? "bg-destructive glow-red" : "bg-primary glow-grass",
+                )}
+              >
+                {isRunning ? (
+                  <>
+                    <Square className="size-7 fill-current" />
+                    {t("closeGame")}
+                  </>
+                ) : (
+                  <>
+                    <Play className="size-7 fill-current" />
+                    {t("play")}
+                  </>
+                )}
+              </motion.button>
+            </div>
           </div>
 
           <div className="mt-6 grid grid-cols-2 gap-3 text-sm sm:max-w-md">

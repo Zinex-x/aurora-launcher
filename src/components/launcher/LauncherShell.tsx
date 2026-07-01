@@ -1,4 +1,6 @@
 import { AnimatePresence, motion } from "framer-motion";
+import { User } from "lucide-react";
+import { useT } from "@/context/LanguageProvider";
 import { Dock } from "./Dock";
 import { TopNavbar } from "./TopNavbar";
 import { Titlebar } from "./Titlebar";
@@ -8,10 +10,12 @@ import { CreateInstanceView } from "./views/CreateInstanceView";
 import { InstanceDetailView } from "./views/InstanceDetailView";
 import { useLauncher } from "@/context/LauncherProvider";
 import { SettingsModal } from "./SettingsModal";
+import { InstanceSettingsModal } from "./InstanceSettingsModal";
 import bgImg from "@/assets/launcher-bg.jpg";
 
 export function LauncherShell() {
   const { view } = useLauncher();
+  const { t } = useT();
   const viewKey = view.kind === "instance" ? `instance:${view.id}` : view.kind;
 
   return (
@@ -44,6 +48,15 @@ export function LauncherShell() {
             >
               {view.kind === "home" && <HomeView />}
               {view.kind === "library" && <LibraryView />}
+              {view.kind === "skins" && (
+                <div className="flex h-full flex-col items-center justify-center py-20 text-center">
+                  <div className="mb-4 flex size-20 items-center justify-center rounded-full bg-primary/10 text-primary">
+                    <User className="size-10" />
+                  </div>
+                  <h2 className="mb-2 text-3xl font-bold">{t("comingSoon")}</h2>
+                  <p className="text-muted-foreground">{t("placeholderComingSoon")}</p>
+                </div>
+              )}
               {view.kind === "create" && <CreateInstanceView />}
               {view.kind === "instance" && <InstanceDetailView id={view.id} />}
             </motion.div>
@@ -53,6 +66,7 @@ export function LauncherShell() {
 
       <Dock />
       <SettingsModal />
+      <InstanceSettingsModal />
     </div>
   );
 }
