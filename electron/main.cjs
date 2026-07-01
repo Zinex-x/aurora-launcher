@@ -424,43 +424,48 @@ ipcMain.handle("download-version", async (event, { instanceName, versionId, load
       } catch (javaError) {
         console.warn("Primary Java download failed, trying manual fallback:", javaError);
         if (process.platform === "win32") {
-          const arch = "windows-x64";
-          const allJsonUrl = "https://launchermeta.mojang.com/v1/products/java-runtime/2ec0cc66269600f918e95759714399723ec00451/all.json";
-          const allRes = await axios.get(allJsonUrl);
-          const entry = allRes.data[arch]?.[component]?.[0];
+          try {
+            const arch = "windows-x64";
+            const allJsonUrl = "https://launchermeta.mojang.com/v1/products/java-runtime/2ec0cc6c0dc15cd77a4dd9646be1dceb02469ee3/all.json";
+            const allRes = await axios.get(allJsonUrl);
+            const entry = allRes.data[arch]?.[component]?.[0];
 
-          if (entry) {
-            const manifestRes = await axios.get(entry.manifest.url);
-            const files = manifestRes.data.files;
-            if (!fs.existsSync(runtimeDir)) fs.mkdirSync(runtimeDir, { recursive: true });
-            const entries = Object.entries(files);
-            for (let i = 0; i < entries.length; i++) {
-              const [filePath, fileData] = entries[i];
-              if (fileData.type === "directory") {
-                fs.mkdirSync(path.join(runtimeDir, filePath), { recursive: true });
-                continue;
-              }
-              const destPath = path.join(runtimeDir, filePath);
-              const parentDir = path.dirname(destPath);
-              if (!fs.existsSync(parentDir)) fs.mkdirSync(parentDir, { recursive: true });
-              const dl = fileData.downloads.lzma || fileData.downloads.raw;
-              const fileRes = await axios({ url: dl.url, responseType: "arraybuffer" });
-              let buf = Buffer.from(fileRes.data);
-              if (fileData.downloads.lzma) buf = Buffer.from(LZMA.decompressFile(buf));
-              fs.writeFileSync(destPath, buf);
-              if (fileData.executable) fs.chmodSync(destPath, 0o755);
+            if (entry) {
+              const manifestRes = await axios.get(entry.manifest.url);
+              const files = manifestRes.data.files;
+              if (!fs.existsSync(runtimeDir)) fs.mkdirSync(runtimeDir, { recursive: true });
+              const entries = Object.entries(files);
+              for (let i = 0; i < entries.length; i++) {
+                const [filePath, fileData] = entries[i];
+                if (fileData.type === "directory") {
+                  fs.mkdirSync(path.join(runtimeDir, filePath), { recursive: true });
+                  continue;
+                }
+                const destPath = path.join(runtimeDir, filePath);
+                const parentDir = path.dirname(destPath);
+                if (!fs.existsSync(parentDir)) fs.mkdirSync(parentDir, { recursive: true });
+                const dl = fileData.downloads.lzma || fileData.downloads.raw;
+                const fileRes = await axios({ url: dl.url, responseType: "arraybuffer" });
+                let buf = Buffer.from(fileRes.data);
+                if (fileData.downloads.lzma) buf = Buffer.from(LZMA.decompressFile(buf));
+                fs.writeFileSync(destPath, buf);
+                if (fileData.executable) fs.chmodSync(destPath, 0o755);
 
-              if (i % 20 === 0 && mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send("download-progress", {
-                  instanceName: sanitizedName,
-                  task: `java.manual.${majorVersion}`,
-                  current: i,
-                  total: entries.length,
-                  percent: Math.round((i / entries.length) * 100),
-                });
+                if (i % 20 === 0 && mainWindow && !mainWindow.isDestroyed()) {
+                  mainWindow.webContents.send("download-progress", {
+                    instanceName: sanitizedName,
+                    task: `java.manual.${majorVersion}`,
+                    current: i,
+                    total: entries.length,
+                    percent: Math.round((i / entries.length) * 100),
+                  });
+                }
               }
+              javaPath = await findJavaExecutable(runtimeDir);
             }
-            javaPath = await findJavaExecutable(runtimeDir);
+          } catch (fallbackError) {
+            console.error("Manual Java fallback also failed:", fallbackError);
+            // We don't throw here to allow checking if Java already exists anyway
           }
         }
       }
@@ -492,12 +497,25 @@ ipcMain.handle("download-version", async (event, { instanceName, versionId, load
     });
 
     let actualVersionId = versionId;
-    if (loader === "fabric" && loaderVersion) {
-      actualVersionId = await installFabric(loaderVersion, versionId, SHARED_DIR);
-    } else if (loader === "forge" && loaderVersion) {
-      const forgeTask = installForgeTask({ version: loaderVersion, mc: versionId }, SHARED_DIR);
+    if (loader === "fabric") {
+      let fVersion = loaderVersion;
+      if (!fVersion) {
+        const loaders = await getFabricLoaders();
+        const stable = loaders.find(l => l.stable);
+        fVersion = stable ? stable.version : loaders[0].version;
+      }
+      console.log(`Installing Fabric ${fVersion} for ${versionId}...`);
+      actualVersionId = await installFabric(fVersion, versionId, SHARED_DIR);
+    } else if (loader === "forge") {
+      let fVersion = loaderVersion;
+      if (!fVersion) {
+        const forgeVersions = await getForgeVersionList({ mcversion: versionId });
+        fVersion = forgeVersions[0].version;
+      }
+      console.log(`Installing Forge ${fVersion} for ${versionId}...`);
+      const forgeTask = installForgeTask({ version: fVersion, mc: versionId }, SHARED_DIR);
       await forgeTask.startAndWait();
-      actualVersionId = `${versionId}-forge-${loaderVersion}`;
+      actualVersionId = `${versionId}-forge-${fVersion}`;
     }
 
     instanceData.actualVersionId = actualVersionId;
