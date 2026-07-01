@@ -16,6 +16,9 @@ contextBridge.exposeInMainWorld("electron", {
   getInstalledInstances: () => ipcRenderer.invoke("get-installed-instances"),
   launchGame: (payload) => ipcRenderer.invoke("launch-game", payload),
   killGame: () => ipcRenderer.invoke("kill-game"),
+  updateInstanceConfig: (payload) => ipcRenderer.invoke("update-instance-config", payload),
+  getInstanceMods: (instanceName) => ipcRenderer.invoke("get-instance-mods", instanceName),
+  openModsFolder: (instanceName) => ipcRenderer.invoke("open-mods-folder", instanceName),
   onDownloadProgress: (callback) => {
     const subscription = (event, data) => callback(data);
     ipcRenderer.on("download-progress", subscription);

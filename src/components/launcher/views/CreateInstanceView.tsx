@@ -10,7 +10,7 @@ const VERSIONS = ["1.21.1", "1.20.6", "1.20.1", "1.19.4", "1.18.2", "1.16.5", "1
 
 export function CreateInstanceView() {
   const { t } = useT();
-  const { addInstance, setView } = useLauncher();
+  const { addInstance, setView, user, setSettingsOpen } = useLauncher();
   const [name, setName] = useState("");
   const [version, setVersion] = useState(VERSIONS[0]);
   const [loader, setLoader] = useState<Modloader>("vanilla");
@@ -22,6 +22,10 @@ export function CreateInstanceView() {
   const submit = () => {
     if (!name.trim()) {
       setError(t("nameRequired"));
+      return;
+    }
+    if (!user) {
+      setSettingsOpen(true);
       return;
     }
     setError("");

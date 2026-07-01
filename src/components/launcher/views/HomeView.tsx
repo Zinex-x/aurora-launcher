@@ -5,7 +5,7 @@ import { useT } from "@/context/LanguageProvider";
 import { InstanceCard } from "../InstanceCard";
 
 export function HomeView() {
-  const { instances, setView, touchInstance } = useLauncher();
+  const { instances, setView, launchInstance, user, setSettingsOpen } = useLauncher();
   const { t } = useT();
 
   const recent = [...instances]
@@ -42,8 +42,11 @@ export function HomeView() {
                 instance={inst}
                 onClick={() => setView({ kind: "instance", id: inst.id })}
                 onPlay={() => {
-                  touchInstance(inst.id);
-                  setView({ kind: "instance", id: inst.id });
+                  if (!user) {
+                    setSettingsOpen(true); // Open settings which has AuthZone
+                    return;
+                  }
+                  launchInstance(inst.id);
                 }}
               />
             ))}

@@ -131,6 +131,9 @@ ipcMain.handle("get-installed-instances", async () => {
       try {
         const content = fs.readFileSync(instanceJsonPath, "utf-8");
         const instance = JSON.parse(content);
+        // Ensure standard fields
+        instance.name = instance.name || folder;
+        instance.version = instance.version || instance.mcVersion;
         instances.push(instance);
       } catch (err) {
         console.error(`Error reading instance.json in ${folder}:`, err);
@@ -138,6 +141,31 @@ ipcMain.handle("get-installed-instances", async () => {
     }
   }
   return instances;
+});
+
+ipcMain.handle("update-instance-config", async (event, { instanceName, config }) => {
+  const profileDir = path.join(PROFILES_DIR, instanceName);
+  const instanceJsonPath = path.join(profileDir, "instance.json");
+  if (fs.existsSync(instanceJsonPath)) {
+    const data = JSON.parse(fs.readFileSync(instanceJsonPath, "utf-8"));
+    const updated = { ...data, ...config };
+    fs.writeFileSync(instanceJsonPath, JSON.stringify(updated, null, 2));
+    return updated;
+  }
+  throw new Error("Instance not found");
+});
+
+ipcMain.handle("get-instance-mods", async (event, instanceName) => {
+  const modsDir = path.join(PROFILES_DIR, instanceName, ".minecraft", "mods");
+  if (!fs.existsSync(modsDir)) return [];
+  const files = fs.readdirSync(modsDir);
+  return files.filter(f => f.endsWith(".jar"));
+});
+
+ipcMain.handle("open-mods-folder", async (event, instanceName) => {
+  const modsDir = path.join(PROFILES_DIR, instanceName, ".minecraft", "mods");
+  if (!fs.existsSync(modsDir)) fs.mkdirSync(modsDir, { recursive: true });
+  shell.openPath(modsDir);
 });
 
 ipcMain.handle("launch-game", async (event, { instanceName, auth }) => {
@@ -388,28 +416,81 @@ ipcMain.handle("download-version", async (event, { instanceName, versionId }) =>
       } catch (javaError) {
         console.warn("Failed to download Java runtime with primary method:", javaError);
 
-        // Fallback for Java 8 Windows x64 if it failed (Legacy)
-        if (majorVersion === 8 && process.platform === "win32") {
+        // Fallback for Windows x64 using manual manifest fetch
+        if (process.platform === "win32") {
           try {
-            console.log("Attempting Java 8 fallback download...");
-            const javaZipUrl =
-              "https://launcher.mojang.com/v1/objects/3d05e1757134898f797d8b3769c824c965e63024/windows-x64.zip";
-            const zipPath = path.join(runtimeDir, "java8.zip");
-            if (!fs.existsSync(runtimeDir)) fs.mkdirSync(runtimeDir, { recursive: true });
+            console.log(`Attempting manual Java ${majorVersion} download for Windows...`);
+            const allJsonUrl = "https://launchermeta.mojang.com/v1/products/java-runtime/2ec0cc96c44e5a76b9c8b7c39df7210883d12871/all.json";
+            const allRes = await axios.get(allJsonUrl);
+            const arch = "windows-x64";
+            // component is defined in the parent scope of the try-catch
+            const entry = allRes.data[arch]?.[component]?.[0];
 
-            const response = await axios({
-              method: "get",
-              url: javaZipUrl,
-              responseType: "arraybuffer",
-            });
-            fs.writeFileSync(zipPath, Buffer.from(response.data));
+            if (entry) {
+              const manifestUrl = entry.manifest.url;
+              const manifestRes = await axios.get(manifestUrl);
+              const files = manifestRes.data.files;
 
-            // Note: In a production environment we'd use a proper zip extractor.
-            // For this implementation, we'll assume the user has a way to extract or we use a basic one.
-            // Since we're blocked, we'll at least place the file.
-            // Actually, let's try to search if it was extracted or if we can do more.
+              if (!fs.existsSync(runtimeDir)) fs.mkdirSync(runtimeDir, { recursive: true });
+
+              // Filter for some critical files to demonstrate it works or download all.
+              // For a robust fix, we should download all files.
+              // To keep it clean and fast for the agent, I'll implement a loop that downloads.
+
+              const fileEntries = Object.entries(files);
+              let downloadedCount = 0;
+
+              for (const [filePath, fileData] of fileEntries) {
+                if (fileData.type === "directory") {
+                  fs.mkdirSync(path.join(runtimeDir, filePath), { recursive: true });
+                  continue;
+                }
+
+                const destPath = path.join(runtimeDir, filePath);
+                const parentDir = path.dirname(destPath);
+                if (!fs.existsSync(parentDir)) fs.mkdirSync(parentDir, { recursive: true });
+
+                const downloadInfo = fileData.downloads.lzma || fileData.downloads.raw;
+                const isLzma = !!fileData.downloads.lzma;
+
+                const fileRes = await axios({
+                  url: downloadInfo.url,
+                  method: 'GET',
+                  responseType: 'arraybuffer'
+                });
+
+                let finalBuffer = Buffer.from(fileRes.data);
+                if (isLzma) {
+                  const decompressed = LZMA.decompressFile(finalBuffer);
+                  finalBuffer = Buffer.from(decompressed);
+                }
+
+                fs.writeFileSync(destPath, finalBuffer);
+                if (fileData.executable) {
+                  fs.chmodSync(destPath, 0o755);
+                }
+
+                downloadedCount++;
+                if (downloadedCount % 10 === 0 && mainWindow && !mainWindow.isDestroyed()) {
+                  mainWindow.webContents.send("download-progress", {
+                    instanceName,
+                    task: `java.manual.${majorVersion}`,
+                    current: downloadedCount,
+                    total: fileEntries.length,
+                    percent: Math.round((downloadedCount / fileEntries.length) * 100),
+                  });
+                }
+              }
+
+              javaPath = await findJavaExecutable(runtimeDir);
+              if (javaPath) {
+                instanceData.javaPath = javaPath;
+                instanceData.javaMajorVersion = majorVersion;
+                fs.writeFileSync(instanceJsonPath, JSON.stringify(instanceData, null, 2));
+              }
+            }
           } catch (fallbackError) {
-            console.error("Java fallback failed:", fallbackError);
+            console.error("Java manual fallback failed:", fallbackError);
           }
         }
       }
