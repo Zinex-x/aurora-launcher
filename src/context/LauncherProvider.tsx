@@ -45,6 +45,7 @@ type Ctx = {
   instances: Instance[];
   addInstance: (i: Omit<Instance, "id" | "createdAt" | "lastPlayed" | "iconHue">) => Instance;
   touchInstance: (id: string) => void;
+  updateInstance: (id: string, config: Partial<Instance>) => Promise<void>;
   launchInstance: (id: string) => Promise<void>;
   killInstance: () => Promise<void>;
   runningInstance: string | null;
@@ -228,6 +229,24 @@ export function LauncherProvider({ children }: { children: ReactNode }) {
   const touchInstance = (id: string) =>
     setInstances((prev) => prev.map((i) => (i.id === id ? { ...i, lastPlayed: Date.now() } : i)));
 
+  const updateInstance: Ctx["updateInstance"] = async (id, config) => {
+    const inst = instances.find(i => i.id === id);
+    if (!inst) return;
+
+    setInstances(prev => prev.map(i => i.id === id ? { ...i, ...config } : i));
+
+    if (window.electron) {
+      try {
+        await window.electron.updateInstanceConfig({
+          instanceName: inst.name,
+          config
+        });
+      } catch (e) {
+        console.error("Failed to update instance config on disk:", e);
+      }
+    }
+  };
+
   const downloadInstance = async (instanceName: string, versionId: string) => {
     setDownloads((prev) => ({
       ...prev,
@@ -255,6 +274,12 @@ export function LauncherProvider({ children }: { children: ReactNode }) {
 
     if (runningInstance) {
       toast.error("A game is already running.");
+      return;
+    }
+
+    if (!user) {
+      toast.info("Please login to launch the game.");
+      // We'll rely on the UI to open AuthModal, but can also trigger here if needed
       return;
     }
 
@@ -294,6 +319,7 @@ export function LauncherProvider({ children }: { children: ReactNode }) {
         instances,
         addInstance,
         touchInstance,
+        updateInstance,
         launchInstance,
         killInstance,
         runningInstance,

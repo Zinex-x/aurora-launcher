@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
-import { Play, Package, Settings as SettingsIcon, Square } from "lucide-react";
-import { useState } from "react";
+import { Play, Package, Settings as SettingsIcon, Square, FolderOpen } from "lucide-react";
+import { useState, useEffect } from "react";
 import { useLauncher } from "@/context/LauncherProvider";
 import { useT } from "@/context/LanguageProvider";
 import { ModloaderBadge } from "../ModloaderBadge";
@@ -11,6 +11,13 @@ export function InstanceDetailView({ id }: { id: string }) {
   const { t, lang } = useT();
   const inst = instances.find((i) => i.id === id);
   const [tab, setTab] = useState<"mods">("mods");
+  const [mods, setMods] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (inst && window.electron) {
+      window.electron.getInstanceMods(inst.name).then(setMods);
+    }
+  }, [inst?.name]);
 
   if (!inst) return null;
 
@@ -129,8 +136,36 @@ export function InstanceDetailView({ id }: { id: string }) {
         </div>
       </div>
 
-      <div className="glass-panel rounded-2xl p-12 text-center text-muted-foreground">
-        {t("comingSoon")}
+      <div className="glass-panel rounded-2xl p-6 min-h-[200px]">
+        {tab === "mods" && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold">{t("mods")} ({mods.length})</h3>
+              <button
+                onClick={() => window.electron?.openModsFolder(inst.name)}
+                className="flex items-center gap-2 rounded-xl bg-white/5 hover:bg-white/10 px-4 py-2 text-xs font-medium transition-all"
+              >
+                <FolderOpen className="size-4" />
+                {lang === 'ru' ? 'Открыть папку модов' : 'Open Mods Folder'}
+              </button>
+            </div>
+
+            {mods.length === 0 ? (
+              <div className="py-12 text-center text-muted-foreground italic">
+                {lang === 'ru' ? 'Моды не найдены' : 'No mods found'}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                {mods.map(mod => (
+                  <div key={mod} className="flex items-center gap-3 rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm">
+                    <Package className="size-4 text-primary/60" />
+                    <span className="truncate">{mod}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </motion.div>
   );

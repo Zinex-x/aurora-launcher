@@ -16,12 +16,24 @@ import { Slider } from "@/components/ui/slider";
 type Category = "general" | "memory";
 
 export function InstanceSettingsModal() {
-  const { isInstanceSettingsOpen, setInstanceSettingsOpen, view, instances } = useLauncher();
+  const { isInstanceSettingsOpen, setInstanceSettingsOpen, view, instances, updateInstance } = useLauncher();
   const { t } = useT();
   const [activeCategory, setActiveCategory] = useState<Category>("general");
 
   const instId = view.kind === "instance" ? view.id : null;
   const inst = instances.find((i) => i.id === instId);
+
+  // Local state for the slider to ensure visual reactivity
+  const [localRam, setLocalRam] = useState<number>(() => {
+    return parseInt(inst?.maxRam || "4096") || 4096;
+  });
+
+  // Keep local state in sync if instance changes or modal re-opens
+  useEffect(() => {
+    if (inst) {
+      setLocalRam(parseInt(inst.maxRam || "4096") || 4096);
+    }
+  }, [inst?.id, isInstanceSettingsOpen]);
 
   if (!isInstanceSettingsOpen || !inst) return null;
 
@@ -31,14 +43,14 @@ export function InstanceSettingsModal() {
   ];
 
   const handleRamChange = (val: number[]) => {
-    // Round to multiples of 128MB
     const rounded = Math.round(val[0] / 128) * 128;
-    // In a real app, this would update the instance.json on disk via IPC
-    console.log("RAM Update:", rounded);
-    inst.maxRam = `${rounded}M`;
+    setLocalRam(rounded);
   };
 
-  const currentRamValue = parseInt(inst.maxRam || "4096") || 4096;
+  const handleRamCommit = async (val: number[]) => {
+    const rounded = Math.round(val[0] / 128) * 128;
+    await updateInstance(inst.id, { maxRam: `${rounded}M` });
+  };
 
   return (
     <div
@@ -121,15 +133,16 @@ export function InstanceSettingsModal() {
                         {t("allocatedMemory")}
                       </h3>
                       <span className="text-2xl font-bold text-primary">
-                        {currentRamValue} MB
+                        {localRam} MB
                       </span>
                     </div>
                     <Slider
-                      defaultValue={[currentRamValue]}
+                      value={[localRam]}
                       max={16384}
                       min={1024}
                       step={128}
                       onValueChange={handleRamChange}
+                      onValueCommit={handleRamCommit}
                       className="py-4"
                     />
                     <div className="mt-4 flex justify-between text-xs text-muted-foreground">
