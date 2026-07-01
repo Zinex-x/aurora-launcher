@@ -1,7 +1,6 @@
 const { app, BrowserWindow, ipcMain, shell } = require("electron");
 const path = require("path");
 const fs = require("fs");
-const express = require("express");
 const axios = require("axios");
 const { MinecraftFolder } = require("@xmcl/core");
 const {
@@ -197,11 +196,8 @@ ipcMain.handle("download-version", async (event, { instanceName, versionId }) =>
       }
     }
 
-    let instanceData = {};
-    if (fs.existsSync(instanceJsonPath)) {
-      instanceData = JSON.parse(fs.readFileSync(instanceJsonPath, "utf-8"));
-    } else {
-      instanceData = {
+    if (!fs.existsSync(instanceJsonPath)) {
+      const instanceData = {
         name: sanitizedName,
         mcVersion: versionId,
         loader: null,
@@ -224,63 +220,150 @@ ipcMain.handle("download-version", async (event, { instanceName, versionId }) =>
       throw new Error(`Version ${versionId} not found in Mojang manifest.`);
     }
 
-    // Fetch full version JSON to get javaVersion
-    const versionJsonRes = await axios.get(versionMeta.url);
-    const fullVersionMeta = versionJsonRes.data;
-    const majorVersion = fullVersionMeta.javaVersion?.majorVersion || 8;
-    const component = fullVersionMeta.javaVersion?.component || "jre-legacy";
+    const task = installTask(versionMeta, mcFolder, {
+      libraryDownloadConcurrency: 10,
+      assetDownloadConcurrency: 10,
+    });
 
-    // 3. Java Runtime Handling
-    const runtimeDir = path.join(LAUNCHER_DIR, "runtime", String(majorVersion));
-    let javaPath = await findJavaExecutable(runtimeDir);
+    await task.startAndWait({
+      onUpdate(child) {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          // Find the root task or relevant child task for progress
+          // We broadcast progress for the main task
+          const progress = {
+            task: child.path || child.name || "downloading",
+            current: child.progress || 0,
+            total: child.total || 0,
+            percent: child.total > 0 ? Math.round((child.progress / child.total) * 100) : 0,
+          };
+          mainWindow.webContents.send("download-progress", progress);
+        }
+      },
+      onFailed(child, error) {
+        console.error(`Task ${child.path || child.name} failed:`, error);
+      },
+    });
 
-    if (!javaPath) {
-      try {
-        console.log(`Downloading Java ${majorVersion}...`);
-        let javaTask;
-        if (majorVersion === 8) {
-          javaTask = installJreFromMojangTask({
-            destination: runtimeDir,
-            unpackLZMA: async (src, dest) => {
-              const compressed = await fs.promises.readFile(src);
-              const decompressed = LZMA.decompressFile(compressed);
-              await fs.promises.writeFile(dest, Buffer.from(decompressed));
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("download-complete", {
+        instanceName: sanitizedName,
+        versionId,
+      });
+    }
+    return { success: true };
+  } catch (error) {
+    console.error("Download failed:", error);
+    const errorMessage = error.message || "An unknown error occurred during download.";
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("download-error", {
+        message: errorMessage,
+        instanceName,
+        versionId,
+      });
+    }
+    throw error;
+  }
+});
+
+// === Microsoft Auth Flow (встроенный BrowserWindow, проверенно рабочий) ===
+const CLIENT_ID = "00000000402b5328";
+const REDIRECT_URI = "https://login.live.com/oauth20_desktop.srf";
+
+ipcMain.handle("microsoft-login", async () => {
+  return new Promise((resolve, reject) => {
+    let codeReceived = false; // флаг: код уже получен, окно закрываем сами, это не отмена пользователем
+
+    // Создаем окно авторизации прямо внутри Electron
+    const authWindow = new BrowserWindow({
+      width: 500,
+      height: 600,
+      title: "Microsoft Authentication",
+      autoHideMenuBar: true,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+      },
+    });
+
+    const authUrl = `https://login.live.com/oauth20_authorize.srf?client_id=${CLIENT_ID}&response_type=code&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=XboxLive.signin%20offline_access`;
+
+    authWindow.loadURL(authUrl);
+
+    // Отслеживаем загрузку страниц, чтобы поймать код авторизации
+    const handleNavigation = async (url) => {
+      if (url.includes("https://login.live.com/oauth20_desktop.srf") && url.includes("code=")) {
+        const urlObj = new URL(url);
+        const code = urlObj.searchParams.get("code");
+
+        codeReceived = true; // помечаем, что код получен — дальнейшее закрытие окна не ошибка
+        // Срочно закрываем окно, код у нас!
+        authWindow.destroy();
+
+        try {
+          // 1. Обмен кода на Microsoft Access Token
+          const msTokenRes = await axios.post(
+            "https://login.live.com/oauth20_token.srf",
+            new URLSearchParams({
+              client_id: CLIENT_ID,
+              code,
+              grant_type: "authorization_code",
+              redirect_uri: REDIRECT_URI,
+            }).toString(),
+            { headers: { "Content-Type": "application/x-www-form-urlencoded" } },
+          );
+          const msAccessToken = msTokenRes.data.access_token;
+
+          // 2. Авторизация в Xbox Live
+          const xblRes = await axios.post("https://user.auth.xboxlive.com/user/authenticate", {
+            Properties: {
+              AuthMethod: "RPS",
+              SiteName: "user.auth.xboxlive.com",
+              RpsTicket: `d=${msAccessToken}`,
             },
           });
         } else {
           const manifest = await fetchJavaRuntimeManifest({
             target: component,
           });
-          javaTask = installJavaRuntimeTask({
-            manifest,
-            destination: runtimeDir,
-            lzma: async (src, dest) => {
-              const compressed = await fs.promises.readFile(src);
-              const decompressed = LZMA.decompressFile(compressed);
-              await fs.promises.writeFile(dest, Buffer.from(decompressed));
-            },
+          const xstsToken = xstsRes.data.Token;
+
+          // 4. Авторизация в Minecraft API
+          const mcAuthRes = await axios.post(
+            "https://api.minecraftservices.com/authentication/login_with_xbox",
+            { identityToken: `XBL3.0 x=${userHash};${xstsToken}` },
+          );
+          const mcAccessToken = mcAuthRes.data.access_token;
+
+          // 5. Проверка лицензии игры (Entitlements)
+          const entitlementsRes = await axios.get(
+            "https://api.minecraftservices.com/entitlements/mcstore",
+            { headers: { Authorization: `Bearer ${mcAccessToken}` } },
+          );
+
+          const hasGame = entitlementsRes.data.items.some((item) => item.name === "game_minecraft");
+          if (!hasGame) {
+            reject(new Error("License Missing: You do not own Minecraft on this account."));
+            return;
+          }
+
+          // 6. Получение профиля игрока (Ник, UUID, Скин)
+          const profileRes = await axios.get("https://api.minecraftservices.com/minecraft/profile", {
+            headers: { Authorization: `Bearer ${mcAccessToken}` },
           });
         }
 
-        await javaTask.startAndWait({
-          onUpdate(child) {
-            if (mainWindow && !mainWindow.isDestroyed()) {
-              mainWindow.webContents.send("download-progress", {
-                instanceName: sanitizedName,
-                task: `java.${child.path || child.name || "download"}`,
-                current: child.progress || 0,
-                total: child.total || 0,
-                percent: child.total > 0 ? Math.round((child.progress / child.total) * 100) : 0,
-              });
-            }
-          },
-        });
+          const userData = {
+            nickname: profileRes.data.name,
+            uuid: profileRes.data.id,
+            accessToken: mcAccessToken,
+            skin:
+              profileRes.data.skins[0]?.url ||
+              "https://textures.minecraft.net/texture/31aa375d8363711d9d43513a968846399435b6f0412e23e2a2550f2495b6c",
+          };
 
-        javaPath = await findJavaExecutable(runtimeDir);
-        if (javaPath) {
-          instanceData.javaPath = javaPath;
-          instanceData.javaMajorVersion = majorVersion;
-          fs.writeFileSync(instanceJsonPath, JSON.stringify(instanceData, null, 2));
+          resolve(userData);
+        } catch (err) {
+          reject(err);
         }
       } catch (javaError) {
         console.warn("Failed to download Java runtime:", javaError);
