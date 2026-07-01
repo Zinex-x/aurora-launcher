@@ -32,13 +32,11 @@ async function findJavaExecutable(baseDir) {
     if (depth > 4) return null;
     try {
       const entries = await fs.promises.readdir(dir, { withFileTypes: true });
-      // Check files in current dir
       for (const entry of entries) {
         if (entry.isFile() && entry.name.toLowerCase() === exeName.toLowerCase()) {
           return path.join(dir, entry.name);
         }
       }
-      // Recurse into directories
       for (const entry of entries) {
         if (entry.isDirectory()) {
           const found = await search(path.join(dir, entry.name), depth + 1);
@@ -59,7 +57,6 @@ function sanitizeInstanceName(name) {
     throw new Error("Instance name cannot be empty.");
   }
   const sanitized = name.trim();
-  // Windows-forbidden characters: < > : " | ? * and slashes
   const invalidChars = /[<>:"|?*\\\/]/g;
   if (invalidChars.test(sanitized)) {
     throw new Error('Instance name contains invalid characters: < > : " | ? * / \\');
@@ -91,13 +88,10 @@ function createWindow() {
 
   if (isDev) {
     mainWindow.loadURL("http://localhost:5173");
-    // Optional: Open devtools
-    // mainWindow.webContents.openDevTools();
   } else {
     mainWindow.loadFile(path.join(__dirname, "../dist/index.html"));
   }
 
-  // Handle window state events
   mainWindow.on("maximize", () => {
     mainWindow.webContents.send("window-maximized", true);
   });
@@ -182,22 +176,23 @@ ipcMain.handle("download-version", async (event, { instanceName, versionId }) =>
     const minecraftDir = path.join(profileDir, ".minecraft");
     const instanceJsonPath = path.join(profileDir, "instance.json");
 
-    // 1. Initialize profile folder
     if (!fs.existsSync(profileDir)) {
       fs.mkdirSync(profileDir, { recursive: true });
     }
 
     if (!fs.existsSync(minecraftDir)) {
       fs.mkdirSync(minecraftDir, { recursive: true });
-      // Create subfolders
       const subfolders = ["mods", "saves", "config", "resourcepacks", "shaderpacks"];
       for (const folder of subfolders) {
         fs.mkdirSync(path.join(minecraftDir, folder), { recursive: true });
       }
     }
 
-    if (!fs.existsSync(instanceJsonPath)) {
-      const instanceData = {
+    let instanceData = {};
+    if (fs.existsSync(instanceJsonPath)) {
+      instanceData = JSON.parse(fs.readFileSync(instanceJsonPath, "utf-8"));
+    } else {
+      instanceData = {
         name: sanitizedName,
         mcVersion: versionId,
         loader: null,
@@ -207,10 +202,8 @@ ipcMain.handle("download-version", async (event, { instanceName, versionId }) =>
       fs.writeFileSync(instanceJsonPath, JSON.stringify(instanceData, null, 2));
     }
 
-    // 2. Download version
     const mcFolder = new MinecraftFolder(SHARED_DIR);
 
-    // Get version meta from manifest
     const manifestRes = await axios.get(
       "https://launchermeta.mojang.com/mc/game/version_manifest_v2.json",
     );
@@ -218,6 +211,75 @@ ipcMain.handle("download-version", async (event, { instanceName, versionId }) =>
 
     if (!versionMeta) {
       throw new Error(`Version ${versionId} not found in Mojang manifest.`);
+    }
+
+    // Fetch full version JSON to get javaVersion
+    const versionJsonRes = await axios.get(versionMeta.url);
+    const fullVersionMeta = versionJsonRes.data;
+    const majorVersion = fullVersionMeta.javaVersion?.majorVersion || 8;
+    const component = fullVersionMeta.javaVersion?.component || "jre-legacy";
+
+    // Java Runtime Handling
+    const runtimeDir = path.join(LAUNCHER_DIR, "runtime", String(majorVersion));
+    let javaPath = await findJavaExecutable(runtimeDir);
+
+    if (!javaPath) {
+      try {
+        console.log(`Downloading Java ${majorVersion}...`);
+        let javaTask;
+        if (majorVersion === 8) {
+          javaTask = installJreFromMojangTask({
+            destination: runtimeDir,
+            unpackLZMA: async (src, dest) => {
+              const compressed = await fs.promises.readFile(src);
+              const decompressed = LZMA.decompressFile(compressed);
+              await fs.promises.writeFile(dest, Buffer.from(decompressed));
+            },
+          });
+        } else {
+          const manifest = await fetchJavaRuntimeManifest({
+            target: component,
+          });
+          javaTask = installJavaRuntimeTask({
+            manifest,
+            destination: runtimeDir,
+            lzma: async (src, dest) => {
+              const compressed = await fs.promises.readFile(src);
+              const decompressed = LZMA.decompressFile(compressed);
+              await fs.promises.writeFile(dest, Buffer.from(decompressed));
+            },
+          });
+        }
+
+        await javaTask.startAndWait({
+          onUpdate(child) {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send("download-progress", {
+                instanceName: sanitizedName,
+                task: `java.${child.path || child.name || "download"}`,
+                current: child.progress || 0,
+                total: child.total || 0,
+                percent: child.total > 0 ? Math.round((child.progress / child.total) * 100) : 0,
+              });
+            }
+          },
+        });
+
+        javaPath = await findJavaExecutable(runtimeDir);
+        if (javaPath) {
+          instanceData.javaPath = javaPath;
+          instanceData.javaMajorVersion = majorVersion;
+          fs.writeFileSync(instanceJsonPath, JSON.stringify(instanceData, null, 2));
+        }
+      } catch (javaError) {
+        console.warn("Failed to download Java runtime:", javaError);
+      }
+    } else {
+      if (instanceData.javaPath !== javaPath) {
+        instanceData.javaPath = javaPath;
+        instanceData.javaMajorVersion = majorVersion;
+        fs.writeFileSync(instanceJsonPath, JSON.stringify(instanceData, null, 2));
+      }
     }
 
     const task = installTask(versionMeta, mcFolder, {
@@ -228,9 +290,8 @@ ipcMain.handle("download-version", async (event, { instanceName, versionId }) =>
     await task.startAndWait({
       onUpdate(child) {
         if (mainWindow && !mainWindow.isDestroyed()) {
-          // Find the root task or relevant child task for progress
-          // We broadcast progress for the main task
           const progress = {
+            instanceName: sanitizedName,
             task: child.path || child.name || "downloading",
             current: child.progress || 0,
             total: child.total || 0,
@@ -271,9 +332,8 @@ const REDIRECT_URI = "https://login.live.com/oauth20_desktop.srf";
 
 ipcMain.handle("microsoft-login", async () => {
   return new Promise((resolve, reject) => {
-    let codeReceived = false; // флаг: код уже получен, окно закрываем сами, это не отмена пользователем
+    let codeReceived = false;
 
-    // Создаем окно авторизации прямо внутри Electron
     const authWindow = new BrowserWindow({
       width: 500,
       height: 600,
@@ -289,18 +349,15 @@ ipcMain.handle("microsoft-login", async () => {
 
     authWindow.loadURL(authUrl);
 
-    // Отслеживаем загрузку страниц, чтобы поймать код авторизации
     const handleNavigation = async (url) => {
       if (url.includes("https://login.live.com/oauth20_desktop.srf") && url.includes("code=")) {
         const urlObj = new URL(url);
         const code = urlObj.searchParams.get("code");
 
-        codeReceived = true; // помечаем, что код получен — дальнейшее закрытие окна не ошибка
-        // Срочно закрываем окно, код у нас!
+        codeReceived = true;
         authWindow.destroy();
 
         try {
-          // 1. Обмен кода на Microsoft Access Token
           const msTokenRes = await axios.post(
             "https://login.live.com/oauth20_token.srf",
             new URLSearchParams({
@@ -313,28 +370,34 @@ ipcMain.handle("microsoft-login", async () => {
           );
           const msAccessToken = msTokenRes.data.access_token;
 
-          // 2. Авторизация в Xbox Live
           const xblRes = await axios.post("https://user.auth.xboxlive.com/user/authenticate", {
             Properties: {
               AuthMethod: "RPS",
               SiteName: "user.auth.xboxlive.com",
               RpsTicket: `d=${msAccessToken}`,
             },
+            RelyingParty: "http://auth.xboxlive.com",
+            TokenType: "JWT",
           });
-        } else {
-          const manifest = await fetchJavaRuntimeManifest({
-            target: component,
+          const xblToken = xblRes.data.Token;
+          const userHash = xblRes.data.DisplayClaims.xui[0].uhs;
+
+          const xstsRes = await axios.post("https://xsts.auth.xboxlive.com/xsts/authorize", {
+            Properties: {
+              SandboxId: "RETAIL",
+              UserTokens: [xblToken],
+            },
+            RelyingParty: "rp://api.minecraftservices.com/",
+            TokenType: "JWT",
           });
           const xstsToken = xstsRes.data.Token;
 
-          // 4. Авторизация в Minecraft API
           const mcAuthRes = await axios.post(
             "https://api.minecraftservices.com/authentication/login_with_xbox",
             { identityToken: `XBL3.0 x=${userHash};${xstsToken}` },
           );
           const mcAccessToken = mcAuthRes.data.access_token;
 
-          // 5. Проверка лицензии игры (Entitlements)
           const entitlementsRes = await axios.get(
             "https://api.minecraftservices.com/entitlements/mcstore",
             { headers: { Authorization: `Bearer ${mcAccessToken}` } },
@@ -346,11 +409,9 @@ ipcMain.handle("microsoft-login", async () => {
             return;
           }
 
-          // 6. Получение профиля игрока (Ник, UUID, Скин)
           const profileRes = await axios.get("https://api.minecraftservices.com/minecraft/profile", {
             headers: { Authorization: `Bearer ${mcAccessToken}` },
           });
-        }
 
           const userData = {
             nickname: profileRes.data.name,
@@ -365,168 +426,25 @@ ipcMain.handle("microsoft-login", async () => {
         } catch (err) {
           reject(err);
         }
-      } catch (javaError) {
-        console.warn("Failed to download Java runtime:", javaError);
       }
-    } else {
-      // Update instance.json with found javaPath if not present
-      if (instanceData.javaPath !== javaPath) {
-        instanceData.javaPath = javaPath;
-        instanceData.javaMajorVersion = majorVersion;
-        fs.writeFileSync(instanceJsonPath, JSON.stringify(instanceData, null, 2));
-      }
-    }
+    };
 
-    const task = installTask(versionMeta, mcFolder, {
-      libraryDownloadConcurrency: 10,
-      assetDownloadConcurrency: 10,
+    authWindow.webContents.on("will-navigate", (event, url) => {
+      handleNavigation(url);
     });
 
-    await task.startAndWait({
-      onUpdate(child) {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          // Find the root task or relevant child task for progress
-          // We broadcast progress for the main task
-          const progress = {
-            instanceName: sanitizedName,
-            task: child.path || child.name || "downloading",
-            current: child.progress || 0,
-            total: child.total || 0,
-            percent: child.total > 0 ? Math.round((child.progress / child.total) * 100) : 0,
-          };
-          mainWindow.webContents.send("download-progress", progress);
-        }
-      },
-      onFailed(child, error) {
-        console.error(`Task ${child.path || child.name} failed:`, error);
-      },
+    authWindow.webContents.on("did-redirect-navigation", (event, url) => {
+      handleNavigation(url);
     });
 
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send("download-complete", {
-        instanceName: sanitizedName,
-        versionId,
-      });
-    }
-    return { success: true };
-  } catch (error) {
-    console.error("Download failed:", error);
-    const errorMessage = error.message || "An unknown error occurred during download.";
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send("download-error", {
-        message: errorMessage,
-        instanceName,
-        versionId,
-      });
-    }
-    throw error;
-  }
-});
-
-// Microsoft Auth Flow
-let authServer;
-const CLIENT_ID = "00000000402b5328"; // Public client ID for Minecraft
-const REDIRECT_URI = "http://localhost:3000";
-
-ipcMain.handle("microsoft-login", async () => {
-  return new Promise((resolve, reject) => {
-    if (authServer) authServer.close();
-
-    const app = express();
-    authServer = app.listen(3000, async () => {
-      const authUrl = `https://login.live.com/oauth20_authorize.srf?client_id=${CLIENT_ID}&response_type=code&redirect_uri=${REDIRECT_URI}&scope=XboxLive.signin%20offline_access`;
-      shell.openExternal(authUrl);
+    const filter = { urls: [REDIRECT_URI + "*"] };
+    authWindow.webContents.session.webRequest.onBeforeRedirect(filter, (details) => {
+      handleNavigation(details.redirectURL);
     });
 
-    app.get("/", async (req, res) => {
-      const { code } = req.query;
-      if (!code) {
-        res.send("Authorization failed. No code provided.");
-        reject(new Error("No code provided"));
-        return;
-      }
-
-      res.send("Successfully authenticated! You can close this tab.");
-      authServer.close();
-      authServer = null;
-
-      try {
-        // 1. Get Microsoft Token
-        const msTokenRes = await axios.post(
-          "https://login.live.com/oauth20_token.srf",
-          new URLSearchParams({
-            client_id: CLIENT_ID,
-            code,
-            grant_type: "authorization_code",
-            redirect_uri: REDIRECT_URI,
-          }).toString(),
-          { headers: { "Content-Type": "application/x-www-form-urlencoded" } },
-        );
-        const msAccessToken = msTokenRes.data.access_token;
-
-        // 2. Xbox Live Auth
-        const xblRes = await axios.post("https://user.auth.xboxlive.com/user/authenticate", {
-          Properties: {
-            AuthMethod: "RPS",
-            SiteName: "user.auth.xboxlive.com",
-            RpsTicket: `d=${msAccessToken}`,
-          },
-          RelyingParty: "http://auth.xboxlive.com",
-          TokenType: "JWT",
-        });
-        const xblToken = xblRes.data.Token;
-        const userHash = xblRes.data.DisplayClaims.xui[0].uhs;
-
-        // 3. XSTS Auth
-        const xstsRes = await axios.post("https://xsts.auth.xboxlive.com/xsts/authorize", {
-          Properties: {
-            SandboxId: "RETAIL",
-            UserTokens: [xblToken],
-          },
-          RelyingParty: "rp://api.minecraftservices.com/",
-          TokenType: "JWT",
-        });
-        const xstsToken = xstsRes.data.Token;
-
-        // 4. Minecraft Auth
-        const mcAuthRes = await axios.post(
-          "https://api.minecraftservices.com/authentication/login_with_xbox",
-          {
-            identityToken: `XBL3.0 x=${userHash};${xstsToken}`,
-          },
-        );
-        const mcAccessToken = mcAuthRes.data.access_token;
-
-        // 5. Check Entitlements
-        const entitlementsRes = await axios.get(
-          "https://api.minecraftservices.com/entitlements/mcstore",
-          {
-            headers: { Authorization: `Bearer ${mcAccessToken}` },
-          },
-        );
-
-        const hasGame = entitlementsRes.data.items.some((item) => item.name === "game_minecraft");
-        if (!hasGame) {
-          throw new Error("License Missing: You do not own Minecraft on this account.");
-        }
-
-        // 6. Get Profile
-        const profileRes = await axios.get("https://api.minecraftservices.com/minecraft/profile", {
-          headers: { Authorization: `Bearer ${mcAccessToken}` },
-        });
-
-        const userData = {
-          nickname: profileRes.data.name,
-          uuid: profileRes.data.id,
-          accessToken: mcAccessToken,
-          skin:
-            profileRes.data.skins[0]?.url ||
-            "https://textures.minecraft.net/texture/31aa375d8363711d9d43513a968846399435b6f0412e23e2a2550f2495b6c", // Default Steve skin if none
-        };
-
-        resolve(userData);
-      } catch (err) {
-        reject(err);
+    authWindow.on("closed", () => {
+      if (!codeReceived) {
+        reject(new Error("Login window closed by user"));
       }
     });
   });
