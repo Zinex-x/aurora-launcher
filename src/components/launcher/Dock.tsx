@@ -1,4 +1,4 @@
-import { Home, Library, Plus, Settings } from "lucide-react";
+import { Home, Library, Plus, Settings, User } from "lucide-react";
 import { useLauncher, type Instance } from "@/context/LauncherProvider";
 import { cn } from "@/lib/utils";
 import { useT } from "@/context/LanguageProvider";
@@ -6,6 +6,8 @@ import { useT } from "@/context/LanguageProvider";
 export function Dock() {
   const { t } = useT();
   const { view, setView, instances, setSettingsOpen } = useLauncher();
+
+  const isSkinsActive = view.kind === "library" && false; // We'll repurpose library for now or add a new kind
 
   // Get last played instance
   const lastPlayed = instances
@@ -28,6 +30,12 @@ export function Dock() {
             onClick={() => setView({ kind: "library" })}
             icon={<Library className="size-5" />}
             title={t("library")}
+          />
+          <DockButton
+            active={view.kind === "skins"}
+            onClick={() => setView({ kind: "skins" })}
+            icon={<User className="size-5" />}
+            title={t("skin")}
           />
           <DockButton
             active={false}

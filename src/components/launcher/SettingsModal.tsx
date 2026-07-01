@@ -47,10 +47,14 @@ export function SettingsModal() {
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-md">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-md"
+      onClick={() => setSettingsOpen(false)}
+    >
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
+        onClick={(e) => e.stopPropagation()}
         className="relative flex h-[600px] w-[900px] overflow-hidden rounded-3xl border border-white/10 bg-card shadow-2xl"
       >
         {/* Sidebar */}

@@ -11,6 +11,8 @@ export type Instance = {
   createdAt: number;
   lastPlayed: number | null;
   iconHue: number;
+  minRam?: string;
+  maxRam?: string;
 };
 
 export type User = {
@@ -31,7 +33,11 @@ export type DownloadState = {
 };
 
 export type View =
-  { kind: "home" } | { kind: "library" } | { kind: "create" } | { kind: "instance"; id: string };
+  | { kind: "home" }
+  | { kind: "library" }
+  | { kind: "skins" }
+  | { kind: "create" }
+  | { kind: "instance"; id: string };
 
 type Ctx = {
   view: View;
@@ -39,11 +45,15 @@ type Ctx = {
   instances: Instance[];
   addInstance: (i: Omit<Instance, "id" | "createdAt" | "lastPlayed" | "iconHue">) => Instance;
   touchInstance: (id: string) => void;
-  launchInstance: (id: string) => void;
+  launchInstance: (id: string) => Promise<void>;
+  killInstance: () => Promise<void>;
+  runningInstance: string | null;
   user: User;
   setUser: (u: User) => void;
   isSettingsOpen: boolean;
   setSettingsOpen: (open: boolean) => void;
+  isInstanceSettingsOpen: boolean;
+  setInstanceSettingsOpen: (open: boolean) => void;
   downloads: Record<string, DownloadState>;
   downloadInstance: (instanceName: string, versionId: string) => Promise<void>;
 };
@@ -78,6 +88,8 @@ export function LauncherProvider({ children }: { children: ReactNode }) {
   const [instances, setInstances] = useState<Instance[]>([]);
   const [user, setUserState] = useState<User>(null);
   const [isSettingsOpen, setSettingsOpen] = useState(false);
+  const [isInstanceSettingsOpen, setInstanceSettingsOpen] = useState(false);
+  const [runningInstance, setRunningInstance] = useState<string | null>(null);
   const [downloads, setDownloads] = useState<Record<string, DownloadState>>({});
 
   useEffect(() => {
@@ -138,17 +150,52 @@ export function LauncherProvider({ children }: { children: ReactNode }) {
       toast.error(`Download failed: ${data.message}`);
     });
 
+    const unsubLaunched = window.electron.onGameLaunched((data) => {
+      setRunningInstance(data.instanceName);
+      toast.success(`Game launched: ${data.instanceName}`);
+    });
+
+    const unsubExited = window.electron.onGameExited((data) => {
+      setRunningInstance(null);
+      toast.info(`Game closed: ${data.instanceName}`);
+    });
+
     return () => {
       unsubProgress();
       unsubComplete();
       unsubError();
+      unsubLaunched();
+      unsubExited();
     };
   }, []);
 
   useEffect(() => {
-    const s = loadState();
-    setInstances(s.instances);
-    setUserState(s.user);
+    async function init() {
+      const s = loadState();
+      setUserState(s.user);
+
+      if (window.electron) {
+        try {
+          const installed = await window.electron.getInstalledInstances();
+          if (installed && installed.length > 0) {
+            // Map backend instances to frontend Instance type if necessary
+            // For now assume they are compatible or merge with local state
+            setInstances(installed.map((inst: any) => ({
+              ...inst,
+              id: inst.id || crypto.randomUUID(),
+              createdAt: inst.createdAt ? new Date(inst.createdAt).getTime() : Date.now(),
+              lastPlayed: inst.lastPlayed ? new Date(inst.lastPlayed).getTime() : null,
+              iconHue: inst.iconHue || (Math.abs(inst.name.split('').reduce((a:number,b:string)=>((a<<5)-a)+b.charCodeAt(0),0)) % 360)
+            })));
+            return;
+          }
+        } catch (e) {
+          console.error("Failed to load installed instances:", e);
+        }
+      }
+      setInstances(s.instances);
+    }
+    init();
   }, []);
 
   useEffect(() => {
@@ -198,18 +245,45 @@ export function LauncherProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const launchInstance = (id: string) => {
+  const launchInstance = async (id: string) => {
     const inst = instances.find((i) => i.id === id);
     if (!inst) return;
+    if (!user) {
+      toast.error("You must be logged in to launch the game.");
+      return;
+    }
+
+    if (runningInstance) {
+      toast.error("A game is already running.");
+      return;
+    }
 
     touchInstance(id);
-    toast.success(`Launching ${inst.name}...`, {
+    toast.success(`Preparing to launch ${inst.name}...`, {
       description: `Minecraft ${inst.version} (${inst.modloader})`,
       icon: "🚀",
     });
 
-    // In a real Electron app, this would use window.electron.launch(...)
-    console.log("ELECTRON: Launching instance", inst);
+    try {
+      await window.electron.launchGame({
+        instanceName: inst.name,
+        auth: {
+          accessToken: user.accessToken,
+          uuid: user.uuid,
+          nickname: user.nickname,
+        }
+      });
+    } catch (e: any) {
+      toast.error(`Failed to launch game: ${e.message}`);
+    }
+  };
+
+  const killInstance = async () => {
+    try {
+      await window.electron.killGame();
+    } catch (e: any) {
+      toast.error(`Failed to kill game: ${e.message}`);
+    }
   };
 
   return (
@@ -221,10 +295,14 @@ export function LauncherProvider({ children }: { children: ReactNode }) {
         addInstance,
         touchInstance,
         launchInstance,
+        killInstance,
+        runningInstance,
         user,
         setUser: setUserState,
         isSettingsOpen,
         setSettingsOpen,
+        isInstanceSettingsOpen,
+        setInstanceSettingsOpen,
         downloads,
         downloadInstance,
       }}
