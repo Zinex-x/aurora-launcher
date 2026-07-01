@@ -1,7 +1,9 @@
 import { motion } from "framer-motion";
-import { Play } from "lucide-react";
+import { Play, Loader2, Square } from "lucide-react";
 import type { Instance } from "@/context/LauncherProvider";
 import { useT } from "@/context/LanguageProvider";
+import { useLauncher } from "@/context/LauncherProvider";
+import { cn } from "@/lib/utils";
 
 export function InstanceCard({
   instance,
@@ -12,6 +14,7 @@ export function InstanceCard({
   onClick: () => void;
   onPlay?: () => void;
 }) {
+  const { runningInstance, isLaunching, killInstance } = useLauncher();
   const { t } = useT();
   const hue = instance.iconHue;
   return (
@@ -43,15 +46,42 @@ export function InstanceCard({
           </div>
         </div>
         {onPlay && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className={cn(
+            "absolute inset-0 flex items-center justify-center bg-black/40 transition-opacity",
+            runningInstance === instance.name || (isLaunching && runningInstance === null) ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+          )}>
             <button
+              disabled={isLaunching && runningInstance !== instance.name}
               onClick={(e) => {
                 e.stopPropagation();
-                onPlay();
+                if (runningInstance === instance.name) {
+                  killInstance();
+                } else {
+                  onPlay();
+                }
               }}
-              className="flex items-center gap-2 rounded-xl bg-primary text-primary-foreground px-4 py-2 text-sm font-semibold glow-grass"
+              className={cn(
+                "flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-all",
+                runningInstance === instance.name
+                  ? "bg-destructive text-destructive-foreground glow-red"
+                  : "bg-primary text-primary-foreground glow-grass"
+              )}
             >
-              <Play className="size-4 fill-current" /> {t("quickPlay")}
+              {isLaunching && runningInstance === null ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  {t("launching")}
+                </>
+              ) : runningInstance === instance.name ? (
+                <>
+                  <Square className="size-4 fill-current" />
+                  {t("closeGame")}
+                </>
+              ) : (
+                <>
+                  <Play className="size-4 fill-current" /> {t("quickPlay")}
+                </>
+              )}
             </button>
           </div>
         )}

@@ -1,4 +1,4 @@
-import { Play } from "lucide-react";
+import { Play, Loader2, Square } from "lucide-react";
 import { useLauncher, type Instance } from "@/context/LauncherProvider";
 import { cn } from "@/lib/utils";
 import { useT } from "@/context/LanguageProvider";
@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useState } from "react";
 
 export function LibraryView() {
-  const { instances, setView, launchInstance } = useLauncher();
+  const { instances, setView, launchInstance, killInstance, runningInstance, isLaunching, user, setSettingsOpen } = useLauncher();
   const { t } = useT();
 
   return (
@@ -27,7 +27,20 @@ export function LibraryView() {
               key={instance.id}
               instance={instance}
               onSelect={() => setView({ kind: "instance", id: instance.id })}
-              onPlay={() => launchInstance(instance.id)}
+              onPlay={() => {
+                if (runningInstance === instance.name) {
+                  killInstance();
+                } else {
+                  if (!user) {
+                    setSettingsOpen(true);
+                    return;
+                  }
+                  launchInstance(instance.id);
+                }
+              }}
+              isRunning={runningInstance === instance.name}
+              isLaunching={isLaunching && runningInstance === null}
+              anyLaunching={isLaunching}
             />
           ))
         )}
@@ -40,10 +53,16 @@ function InstanceRow({
   instance,
   onSelect,
   onPlay,
+  isRunning,
+  isLaunching,
+  anyLaunching
 }: {
   instance: Instance;
   onSelect: () => void;
   onPlay: () => void;
+  isRunning: boolean;
+  isLaunching: boolean;
+  anyLaunching: boolean;
 }) {
   const { t } = useT();
   const [isHovered, setIsHovered] = useState(false);
@@ -57,7 +76,7 @@ function InstanceRow({
     >
       <div className="relative size-12 shrink-0">
         <AnimatePresence mode="wait">
-          {!isHovered ? (
+          {(!isHovered && !isRunning && !isLaunching) ? (
             <motion.div
               key="icon"
               initial={{ scale: 0.8, opacity: 0 }}
@@ -78,14 +97,26 @@ function InstanceRow({
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.8, opacity: 0 }}
               transition={{ duration: 0.2 }}
+              disabled={anyLaunching && !isRunning}
               onClick={(e) => {
                 e.stopPropagation();
                 onPlay();
               }}
-              title={t("play")}
-              className="absolute inset-0 flex items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[0_0_20px_var(--grass-glow)] hover:scale-105 transition-transform"
+              title={isRunning ? t("closeGame") : t("play")}
+              className={cn(
+                "absolute inset-0 flex items-center justify-center rounded-full transition-all hover:scale-105",
+                isRunning
+                  ? "bg-destructive text-destructive-foreground shadow-[0_0_20px_var(--red-glow)]"
+                  : "bg-primary text-primary-foreground shadow-[0_0_20px_var(--grass-glow)]"
+              )}
             >
-              <Play className="size-6 fill-current ml-0.5" />
+              {isLaunching ? (
+                <Loader2 className="size-6 animate-spin" />
+              ) : isRunning ? (
+                <Square className="size-6 fill-current" />
+              ) : (
+                <Play className="size-6 fill-current ml-0.5" />
+              )}
             </motion.button>
           )}
         </AnimatePresence>

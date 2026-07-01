@@ -11,6 +11,10 @@ const {
   installJreFromMojangTask,
   fetchJavaRuntimeManifest,
   installJavaRuntimeTask,
+  installFabric,
+  installForgeTask,
+  getFabricLoaders,
+  getForgeVersionList,
 } = require("@xmcl/installer");
 const LZMA = require("lzma-purejs");
 const { Client } = require("minecraft-launcher-core");
@@ -193,7 +197,7 @@ ipcMain.handle("launch-game", async (event, { instanceName, auth }) => {
     },
     root: minecraftDir,
     version: {
-      number: instanceData.mcVersion,
+      number: instanceData.actualVersionId || instanceData.mcVersion,
       type: "release",
     },
     memory: {
@@ -292,7 +296,30 @@ ipcMain.handle("get-vanilla-versions", async () => {
   }
 });
 
-ipcMain.handle("download-version", async (event, { instanceName, versionId }) => {
+ipcMain.handle("get-fabric-versions", async (event, mcVersion) => {
+  try {
+    const loaders = await getFabricLoaders();
+    // Usually we want to filter by mcVersion if needed, but getFabricLoaders often returns all.
+    // However, Fabric is usually compatible across versions if you have the right mapping.
+    // Some versions of getFabricLoaders might take mcVersion.
+    return loaders;
+  } catch (error) {
+    console.error("Failed to fetch Fabric versions:", error);
+    return [];
+  }
+});
+
+ipcMain.handle("get-forge-versions", async (event, mcVersion) => {
+  try {
+    const versions = await getForgeVersionList({ mcversion: mcVersion });
+    return versions;
+  } catch (error) {
+    console.error("Failed to fetch Forge versions:", error);
+    return [];
+  }
+});
+
+ipcMain.handle("download-version", async (event, { instanceName, versionId, loader, loaderVersion }) => {
   try {
     const sanitizedName = sanitizeInstanceName(instanceName);
     const profileDir = path.join(PROFILES_DIR, sanitizedName);
@@ -318,8 +345,8 @@ ipcMain.handle("download-version", async (event, { instanceName, versionId }) =>
       instanceData = {
         name: sanitizedName,
         mcVersion: versionId,
-        loader: null,
-        loaderVersion: null,
+        loader: loader || null,
+        loaderVersion: loaderVersion || null,
         createdAt: new Date().toISOString(),
       };
       fs.writeFileSync(instanceJsonPath, JSON.stringify(instanceData, null, 2));
@@ -524,6 +551,37 @@ ipcMain.handle("download-version", async (event, { instanceName, versionId }) =>
         console.error(`Task ${child.path || child.name} failed:`, error);
       },
     });
+
+    let actualVersionId = versionId;
+
+    if (loader === "fabric" && loaderVersion) {
+      console.log(`Installing Fabric ${loaderVersion} for ${versionId}...`);
+      actualVersionId = await installFabric(loaderVersion, versionId, SHARED_DIR);
+    } else if (loader === "forge" && loaderVersion) {
+      console.log(`Installing Forge ${loaderVersion} for ${versionId}...`);
+      const forgeTask = installForgeTask({
+        version: loaderVersion,
+        mc: versionId
+      }, SHARED_DIR);
+      await forgeTask.startAndWait({
+        onUpdate(child) {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send("download-progress", {
+              instanceName: sanitizedName,
+              task: `forge.${child.path || child.name || "install"}`,
+              current: child.progress || 0,
+              total: child.total || 0,
+              percent: child.total > 0 ? Math.round((child.progress / child.total) * 100) : 0,
+            });
+          }
+        }
+      });
+      // Forge usually creates a version named like this:
+      actualVersionId = `${versionId}-forge-${loaderVersion}`;
+    }
+
+    instanceData.actualVersionId = actualVersionId;
+    fs.writeFileSync(instanceJsonPath, JSON.stringify(instanceData, null, 2));
 
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send("download-complete", {
