@@ -1,9 +1,41 @@
 const { app, BrowserWindow, ipcMain, shell } = require("electron");
 const path = require("path");
+const fs = require("fs");
 const express = require("express");
 const axios = require("axios");
+const { MinecraftFolder } = require("@xmcl/core");
+const {
+  installTask,
+  installVersionTask,
+  installLibrariesTask,
+  installAssetsTask,
+} = require("@xmcl/installer");
 
 let mainWindow;
+
+const LAUNCHER_DIR = path.join(app.getPath("appData"), ".aurora-launcher");
+const SHARED_DIR = LAUNCHER_DIR;
+const PROFILES_DIR = path.join(LAUNCHER_DIR, "profiles");
+
+// Ensure base directories exist
+if (!fs.existsSync(LAUNCHER_DIR)) fs.mkdirSync(LAUNCHER_DIR, { recursive: true });
+if (!fs.existsSync(PROFILES_DIR)) fs.mkdirSync(PROFILES_DIR, { recursive: true });
+
+function sanitizeInstanceName(name) {
+  if (!name || typeof name !== "string" || name.trim() === "") {
+    throw new Error("Instance name cannot be empty.");
+  }
+  const sanitized = name.trim();
+  // Windows-forbidden characters: < > : " | ? * and slashes
+  const invalidChars = /[<>:"|?*\\\/]/g;
+  if (invalidChars.test(sanitized)) {
+    throw new Error('Instance name contains invalid characters: < > : " | ? * / \\');
+  }
+  if (sanitized === "." || sanitized === "..") {
+    throw new Error("Invalid instance name.");
+  }
+  return sanitized;
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -82,6 +114,122 @@ ipcMain.on("window-close", () => {
 
 ipcMain.handle("get-window-maximized", () => {
   return mainWindow ? mainWindow.isMaximized() : false;
+});
+
+ipcMain.handle("get-vanilla-versions", async () => {
+  try {
+    const response = await axios.get(
+      "https://launchermeta.mojang.com/mc/game/version_manifest_v2.json",
+    );
+    const { latest, versions } = response.data;
+
+    const filteredVersions = versions
+      .filter((v) => v.type === "release" || v.type === "snapshot")
+      .map((v) => ({
+        id: v.id,
+        type: v.type,
+        url: v.url,
+        releaseTime: v.releaseTime,
+      }));
+
+    return {
+      latest,
+      versions: filteredVersions,
+    };
+  } catch (error) {
+    console.error("Failed to fetch vanilla versions:", error);
+    throw new Error("Failed to fetch Minecraft versions. Please check your internet connection.");
+  }
+});
+
+ipcMain.handle("download-version", async (event, { instanceName, versionId }) => {
+  try {
+    const sanitizedName = sanitizeInstanceName(instanceName);
+    const profileDir = path.join(PROFILES_DIR, sanitizedName);
+    const minecraftDir = path.join(profileDir, ".minecraft");
+    const instanceJsonPath = path.join(profileDir, "instance.json");
+
+    // 1. Initialize profile folder
+    if (!fs.existsSync(profileDir)) {
+      fs.mkdirSync(profileDir, { recursive: true });
+    }
+
+    if (!fs.existsSync(minecraftDir)) {
+      fs.mkdirSync(minecraftDir, { recursive: true });
+      // Create subfolders
+      const subfolders = ["mods", "saves", "config", "resourcepacks", "shaderpacks"];
+      for (const folder of subfolders) {
+        fs.mkdirSync(path.join(minecraftDir, folder), { recursive: true });
+      }
+    }
+
+    if (!fs.existsSync(instanceJsonPath)) {
+      const instanceData = {
+        name: sanitizedName,
+        mcVersion: versionId,
+        loader: null,
+        loaderVersion: null,
+        createdAt: new Date().toISOString(),
+      };
+      fs.writeFileSync(instanceJsonPath, JSON.stringify(instanceData, null, 2));
+    }
+
+    // 2. Download version
+    const mcFolder = new MinecraftFolder(SHARED_DIR);
+
+    // Get version meta from manifest
+    const manifestRes = await axios.get(
+      "https://launchermeta.mojang.com/mc/game/version_manifest_v2.json",
+    );
+    const versionMeta = manifestRes.data.versions.find((v) => v.id === versionId);
+
+    if (!versionMeta) {
+      throw new Error(`Version ${versionId} not found in Mojang manifest.`);
+    }
+
+    const task = installTask(versionMeta, mcFolder, {
+      libraryDownloadConcurrency: 10,
+      assetDownloadConcurrency: 10,
+    });
+
+    await task.startAndWait({
+      onUpdate(child) {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          // Find the root task or relevant child task for progress
+          // We broadcast progress for the main task
+          const progress = {
+            task: child.path || child.name || "downloading",
+            current: child.progress || 0,
+            total: child.total || 0,
+            percent: child.total > 0 ? Math.round((child.progress / child.total) * 100) : 0,
+          };
+          mainWindow.webContents.send("download-progress", progress);
+        }
+      },
+      onFailed(child, error) {
+        console.error(`Task ${child.path || child.name} failed:`, error);
+      },
+    });
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("download-complete", {
+        instanceName: sanitizedName,
+        versionId,
+      });
+    }
+    return { success: true };
+  } catch (error) {
+    console.error("Download failed:", error);
+    const errorMessage = error.message || "An unknown error occurred during download.";
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("download-error", {
+        message: errorMessage,
+        instanceName,
+        versionId,
+      });
+    }
+    throw error;
+  }
 });
 
 // Microsoft Auth Flow
