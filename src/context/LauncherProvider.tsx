@@ -20,6 +20,16 @@ export type User = {
   skin?: string;
 } | null;
 
+export type DownloadStatus = "idle" | "downloading" | "ready" | "error";
+
+export type DownloadState = {
+  status: DownloadStatus;
+  overallPercent: number;
+  currentTaskLabel: string;
+  error?: string;
+  _tasksSeen?: Record<string, number>;
+};
+
 export type View =
   { kind: "home" } | { kind: "library" } | { kind: "create" } | { kind: "instance"; id: string };
 
@@ -34,9 +44,21 @@ type Ctx = {
   setUser: (u: User) => void;
   isSettingsOpen: boolean;
   setSettingsOpen: (open: boolean) => void;
+  downloads: Record<string, DownloadState>;
+  downloadInstance: (instanceName: string, versionId: string) => Promise<void>;
 };
 
 const LauncherContext = createContext<Ctx | null>(null);
+
+const TASK_WEIGHTS: Record<string, number> = {
+  "java.download": 0.15,
+  "java.extract": 0.05,
+  "install.version.json": 0.02,
+  "install.version.jar": 0.13,
+  "install.libraries": 0.25,
+  "install.assets.index": 0.05,
+  "install.assets": 0.35,
+};
 
 const STORAGE = "launcher.v1";
 
@@ -56,6 +78,72 @@ export function LauncherProvider({ children }: { children: ReactNode }) {
   const [instances, setInstances] = useState<Instance[]>([]);
   const [user, setUserState] = useState<User>(null);
   const [isSettingsOpen, setSettingsOpen] = useState(false);
+  const [downloads, setDownloads] = useState<Record<string, DownloadState>>({});
+
+  useEffect(() => {
+    if (!window.electron) return;
+
+    const unsubProgress = window.electron.onDownloadProgress((data) => {
+      setDownloads((prev) => {
+        const current = prev[data.instanceName] || {
+          status: "downloading",
+          overallPercent: 0,
+          currentTaskLabel: "",
+        };
+
+        // Track sub-task progress to calculate overall weighted progress
+        const tasksSeen = current._tasksSeen || {};
+        tasksSeen[data.task] = data.percent / 100;
+
+        let overallPercent = 0;
+        for (const [task, p] of Object.entries(tasksSeen)) {
+          overallPercent += (p as number) * (TASK_WEIGHTS[task] || 0);
+        }
+
+        return {
+          ...prev,
+          [data.instanceName]: {
+            ...current,
+            status: "downloading",
+            overallPercent: Math.min(99, Math.round(overallPercent * 100)),
+            currentTaskLabel: data.task,
+            _tasksSeen: tasksSeen, // internal
+          } as DownloadState,
+        };
+      });
+    });
+
+    const unsubComplete = window.electron.onDownloadComplete((data) => {
+      setDownloads((prev) => ({
+        ...prev,
+        [data.instanceName]: {
+          status: "ready",
+          overallPercent: 100,
+          currentTaskLabel: "finalizing",
+        },
+      }));
+      toast.success(`Instance ${data.instanceName} is ready!`);
+    });
+
+    const unsubError = window.electron.onDownloadError((data) => {
+      setDownloads((prev) => ({
+        ...prev,
+        [data.instanceName]: {
+          status: "error",
+          overallPercent: 0,
+          currentTaskLabel: "error",
+          error: data.message,
+        },
+      }));
+      toast.error(`Download failed: ${data.message}`);
+    });
+
+    return () => {
+      unsubProgress();
+      unsubComplete();
+      unsubError();
+    };
+  }, []);
 
   useEffect(() => {
     const s = loadState();
@@ -93,6 +181,23 @@ export function LauncherProvider({ children }: { children: ReactNode }) {
   const touchInstance = (id: string) =>
     setInstances((prev) => prev.map((i) => (i.id === id ? { ...i, lastPlayed: Date.now() } : i)));
 
+  const downloadInstance = async (instanceName: string, versionId: string) => {
+    setDownloads((prev) => ({
+      ...prev,
+      [instanceName]: {
+        status: "downloading",
+        overallPercent: 0,
+        currentTaskLabel: "preparing",
+      },
+    }));
+
+    try {
+      await window.electron.downloadVersion({ instanceName, versionId });
+    } catch (e) {
+      // Error handled via IPC event
+    }
+  };
+
   const launchInstance = (id: string) => {
     const inst = instances.find((i) => i.id === id);
     if (!inst) return;
@@ -120,6 +225,8 @@ export function LauncherProvider({ children }: { children: ReactNode }) {
         setUser: setUserState,
         isSettingsOpen,
         setSettingsOpen,
+        downloads,
+        downloadInstance,
       }}
     >
       {children}
