@@ -498,24 +498,41 @@ ipcMain.handle("download-version", async (event, { instanceName, versionId, load
 
     let actualVersionId = versionId;
     if (loader === "fabric") {
-      let fVersion = loaderVersion;
-      if (!fVersion) {
-        const loaders = await getFabricLoaders();
-        const stable = loaders.find(l => l.stable);
-        fVersion = stable ? stable.version : loaders[0].version;
+      try {
+        let fVersion = loaderVersion;
+        if (!fVersion) {
+          const loaderRes = await axios.get(`https://meta.fabricmc.net/v2/versions/loader/${versionId}`);
+          if (!Array.isArray(loaderRes.data) || loaderRes.data.length === 0) {
+            throw new Error(`No Fabric loader versions found for Minecraft ${versionId}`);
+          }
+          // The meta API for /loader/{mcVersion} returns a list of objects containing loader info
+          const stable = loaderRes.data.find(l => l.loader.stable);
+          fVersion = stable ? stable.loader.version : loaderRes.data[0].loader.version;
+        }
+        console.log(`Installing Fabric ${fVersion} for ${versionId}...`);
+        actualVersionId = await installFabric(fVersion, versionId, SHARED_DIR);
+      } catch (fabricErr) {
+        console.error("Fabric installation failed:", fabricErr.message);
+        throw new Error(`Fabric installation failed: ${fabricErr.message}. Ensure this version is supported by Fabric.`);
       }
-      console.log(`Installing Fabric ${fVersion} for ${versionId}...`);
-      actualVersionId = await installFabric(fVersion, versionId, SHARED_DIR);
     } else if (loader === "forge") {
-      let fVersion = loaderVersion;
-      if (!fVersion) {
-        const forgeVersions = await getForgeVersionList({ mcversion: versionId });
-        fVersion = forgeVersions[0].version;
+      try {
+        let fVersion = loaderVersion;
+        if (!fVersion) {
+          const forgeVersions = await getForgeVersionList({ mcversion: versionId });
+          if (!forgeVersions || forgeVersions.length === 0) {
+            throw new Error(`No Forge versions found for Minecraft ${versionId}`);
+          }
+          fVersion = forgeVersions[0].version;
+        }
+        console.log(`Installing Forge ${fVersion} for ${versionId}...`);
+        const forgeTask = installForgeTask({ version: fVersion, mc: versionId }, SHARED_DIR);
+        await forgeTask.startAndWait();
+        actualVersionId = `${versionId}-forge-${fVersion}`;
+      } catch (forgeErr) {
+        console.error("Forge installation failed:", forgeErr.message);
+        throw new Error(`Forge installation failed: ${forgeErr.message}. Ensure this version is supported by Forge.`);
       }
-      console.log(`Installing Forge ${fVersion} for ${versionId}...`);
-      const forgeTask = installForgeTask({ version: fVersion, mc: versionId }, SHARED_DIR);
-      await forgeTask.startAndWait();
-      actualVersionId = `${versionId}-forge-${fVersion}`;
     }
 
     instanceData.actualVersionId = actualVersionId;
