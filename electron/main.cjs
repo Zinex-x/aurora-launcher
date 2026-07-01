@@ -238,6 +238,7 @@ const instanceData = JSON.parse(fs.readFileSync(instanceJsonPath, "utf-8"));
       min: instanceData.minRam || "2G",
     },
     javaPath: instanceData.javaPath,
+    skipAssetsCheck: true,
     overrides: {
       versionJson: path.join(LAUNCHER_DIR, "versions", targetVersionId, `${targetVersionId}.json`),
       library: path.join(LAUNCHER_DIR, "libraries"),
@@ -526,6 +527,10 @@ ipcMain.handle("download-version", async (event, { instanceName, versionId, load
       instanceData.javaMajorVersion = majorVersion;
       fs.writeFileSync(instanceJsonPath, JSON.stringify(instanceData, null, 2));
     }
+
+    // Ensure vanilla version metadata is installed first as a safety net
+    console.log(`[Launcher] Ensuring vanilla version metadata for ${versionId}...`);
+    await installVersionTask(versionMeta, mcFolder).startAndWait();
 
     const task = installTask(versionMeta, mcFolder, {
       libraryDownloadConcurrency: 10,
