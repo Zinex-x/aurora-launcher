@@ -185,8 +185,41 @@ ipcMain.handle("launch-game", async (event, { instanceName, auth }) => {
     throw new Error(`Instance config not found for ${instanceName}`);
   }
 
-  const instanceData = JSON.parse(fs.readFileSync(instanceJsonPath, "utf-8"));
+const instanceData = JSON.parse(fs.readFileSync(instanceJsonPath, "utf-8"));
   const launcher = new Client();
+  const targetVersionId = instanceData.actualVersionId || instanceData.mcVersion;
+  const isModified = !!instanceData.actualVersionId;
+  console.log("starting, version:", instanceData.actualVersionId);
+  
+  let vanillaAssetIndex = undefined;
+  try {
+    const vanillaJsonPath = path.join(LAUNCHER_DIR, "versions", instanceData.mcVersion, `${instanceData.mcVersion}.json`);
+    
+    // 1.
+    if (fs.existsSync(vanillaJsonPath)) {
+      const vanillaJson = JSON.parse(fs.readFileSync(vanillaJsonPath, "utf-8"));
+      if (vanillaJson && vanillaJson.assetIndex) {
+        vanillaAssetIndex = vanillaJson.assetIndex;
+      }
+    }
+    
+    // 2.
+    if (!vanillaAssetIndex) {
+      console.log(`[Launcher] AssetIndex not found locally. Fetching from Mojang for ${instanceData.mcVersion}...`);
+      const manifestRes = await axios.get("https://launchermeta.mojang.com/mc/game/version_manifest_v2.json");
+      const versionMeta = manifestRes.data.versions.find((v) => v.id === instanceData.mcVersion);
+      
+      if (versionMeta) {
+        const versionJsonRes = await axios.get(versionMeta.url);
+        if (versionJsonRes.data && versionJsonRes.data.assetIndex) {
+          vanillaAssetIndex = versionJsonRes.data.assetIndex;
+          console.log(`[Launcher] AssetIndex successfully fetched from Mojang!`);
+        }
+      }
+    }
+  } catch (e) {
+    console.error("Failed to resolve vanilla assetIndex:", e);
+  }
 
   const opts = {
     authorization: {
@@ -197,7 +230,7 @@ ipcMain.handle("launch-game", async (event, { instanceName, auth }) => {
     },
     root: minecraftDir,
     version: {
-      number: instanceData.actualVersionId || instanceData.mcVersion,
+      number: targetVersionId,
       type: "release",
     },
     memory: {
@@ -206,23 +239,40 @@ ipcMain.handle("launch-game", async (event, { instanceName, auth }) => {
     },
     javaPath: instanceData.javaPath,
     overrides: {
+      versionJson: path.join(LAUNCHER_DIR, "versions", targetVersionId, `${targetVersionId}.json`),
+      library: path.join(LAUNCHER_DIR, "libraries"),
       assetRoot: path.join(LAUNCHER_DIR, "assets"),
-      libraryRoot: path.join(LAUNCHER_DIR, "libraries"),
       versionRoot: path.join(LAUNCHER_DIR, "versions"),
       gameDirectory: minecraftDir,
+      minecraftJar: path.join(LAUNCHER_DIR, "versions", instanceData.mcVersion, `${instanceData.mcVersion}.jar`),
+
+      assetIndex: vanillaAssetIndex,
     },
   };
-
   try {
-    currentProcess = launcher.launch(opts);
-
-    currentProcess.on("close", (code) => {
-      console.log(`Game exited with code ${code}`);
-      currentProcess = null;
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send("game-exited", { instanceName });
-      }
+    launcher.on('data', (e) => {
+        console.log(`[Minecraft] ${e.toString()}`);
     });
+
+    launcher.on('debug', (e) => {
+        console.log(`[MCLC Debug] ${e}`);
+    });
+
+    launcher.on('error', (e) => {
+        console.error(`[MCLC Error] КРИТИЧЕСКАЯ ОШИБКА MCLC:`, e);
+    });
+
+    currentProcess = await launcher.launch(opts);
+
+    if (currentProcess) {
+      currentProcess.on("close", (code) => {
+        console.log(`Game exited with code ${code}`);
+        currentProcess = null;
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send("game-exited", { instanceName });
+        }
+      });
+    }
 
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send("game-launched", { instanceName });
@@ -500,19 +550,38 @@ ipcMain.handle("download-version", async (event, { instanceName, versionId, load
     if (loader === "fabric") {
       try {
         let fVersion = loaderVersion;
+
         if (!fVersion) {
-          const loaderRes = await axios.get(`https://meta.fabricmc.net/v2/versions/loader/${versionId}`);
+          console.log(`Querying Fabric loaders for Minecraft ${versionId}...`);
+          
+          const loaderRes = await axios.get(`https://meta.fabricmc.net/v2/versions/loader`);
+
           if (!Array.isArray(loaderRes.data) || loaderRes.data.length === 0) {
-            throw new Error(`No Fabric loader versions found for Minecraft ${versionId}`);
+            throw new Error(`No Fabric loader versions found.`);
           }
-          // The meta API for /loader/{mcVersion} returns a list of objects containing loader info
-          const stable = loaderRes.data.find(l => l.loader.stable);
-          fVersion = stable ? stable.loader.version : loaderRes.data[0].loader.version;
+
+          const stableEntry = loaderRes.data.find(item => item.stable === true);
+          const targetEntry = stableEntry || loaderRes.data[0];
+
+          if (!targetEntry?.version) {
+            throw new Error("Failed to parse a valid loader version from Fabric meta response.");
+          }
+
+          fVersion = targetEntry.version; 
         }
-        console.log(`Installing Fabric ${fVersion} for ${versionId}...`);
-        actualVersionId = await installFabric(fVersion, versionId, SHARED_DIR);
+
+        console.log(`Installing Fabric Loader ${fVersion} for Minecraft ${versionId}...`);
+
+        // ВАЖНО: один объект с обязательными полями minecraftVersion / version / minecraft
+        actualVersionId = await installFabric({
+          minecraftVersion: versionId,
+          version: fVersion,
+          minecraft: SHARED_DIR,
+        });
+
+        console.log(`Fabric installed successfully. Generated version ID: ${actualVersionId}`);
       } catch (fabricErr) {
-        console.error("Fabric installation failed:", fabricErr.message);
+        console.error("Fabric installation sub-task failed:", fabricErr);
         throw new Error(`Fabric installation failed: ${fabricErr.message}. Ensure this version is supported by Fabric.`);
       }
     } else if (loader === "forge") {
