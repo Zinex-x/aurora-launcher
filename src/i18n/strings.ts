@@ -53,6 +53,8 @@ export const strings = {
     homeTitle: "Главная",
     createTitle: "Новая сборка",
     nameRequired: "Введите название",
+    showAllVersions: "Все версии",
+    fabricUnavailable: "Fabric недоступен для этой версии, будет установлена ванильная версия",
     library: "Библиотека",
     librarySubtitle: "Управляйте всеми своими сборками",
     // Settings categories
@@ -121,6 +123,8 @@ export const strings = {
     homeTitle: "Home",
     createTitle: "New Instance",
     nameRequired: "Name is required",
+    showAllVersions: "Show all versions",
+    fabricUnavailable: "Fabric is not available for this version. Vanilla Minecraft will be installed instead.",
     library: "Library",
     librarySubtitle: "Manage all your Minecraft instances",
     // Settings categories

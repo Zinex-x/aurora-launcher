@@ -57,7 +57,7 @@ type Ctx = {
   isInstanceSettingsOpen: boolean;
   setInstanceSettingsOpen: (open: boolean) => void;
   downloads: Record<string, DownloadState>;
-  downloadInstance: (instanceName: string, versionId: string) => Promise<void>;
+  downloadInstance: (instanceName: string, versionId: string, loader?: Modloader) => Promise<void>;
 };
 
 const LauncherContext = createContext<Ctx | null>(null);
@@ -250,7 +250,7 @@ export function LauncherProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const downloadInstance = async (instanceName: string, versionId: string) => {
+  const downloadInstance = async (instanceName: string, versionId: string, loader: Modloader = "vanilla") => {
     setDownloads((prev) => ({
       ...prev,
       [instanceName]: {
@@ -261,7 +261,7 @@ export function LauncherProvider({ children }: { children: ReactNode }) {
     }));
 
     try {
-      await window.electron.downloadVersion({ instanceName, versionId });
+      await window.electron.downloadVersion({ instanceName, versionId, loader });
     } catch (e) {
       // Error handled via IPC event
     }

@@ -35,7 +35,7 @@ async function findJavaExecutable(baseDir) {
   const exeName = isWin ? "java.exe" : "java";
 
   async function search(dir, depth) {
-    if (depth > 4) return null;
+    if (depth > 6) return null; // Increased depth for deep Mojang structures
     try {
       const entries = await fs.promises.readdir(dir, { withFileTypes: true });
       for (const entry of entries) {
@@ -296,12 +296,19 @@ ipcMain.handle("get-vanilla-versions", async () => {
   }
 });
 
+ipcMain.handle("check-fabric-compatibility", async (event, mcVersion) => {
+  try {
+    const response = await axios.get(`https://meta.fabricmc.net/v2/versions/loader/${mcVersion}`);
+    return Array.isArray(response.data) && response.data.length > 0;
+  } catch (error) {
+    console.error(`Failed to check Fabric compatibility for ${mcVersion}:`, error);
+    return false;
+  }
+});
+
 ipcMain.handle("get-fabric-versions", async (event, mcVersion) => {
   try {
     const loaders = await getFabricLoaders();
-    // Usually we want to filter by mcVersion if needed, but getFabricLoaders often returns all.
-    // However, Fabric is usually compatible across versions if you have the right mapping.
-    // Some versions of getFabricLoaders might take mcVersion.
     return loaders;
   } catch (error) {
     console.error("Failed to fetch Fabric versions:", error);
@@ -320,22 +327,18 @@ ipcMain.handle("get-forge-versions", async (event, mcVersion) => {
 });
 
 ipcMain.handle("download-version", async (event, { instanceName, versionId, loader, loaderVersion }) => {
+  const sanitizedName = sanitizeInstanceName(instanceName);
   try {
-    const sanitizedName = sanitizeInstanceName(instanceName);
     const profileDir = path.join(PROFILES_DIR, sanitizedName);
     const minecraftDir = path.join(profileDir, ".minecraft");
     const instanceJsonPath = path.join(profileDir, "instance.json");
 
-    if (!fs.existsSync(profileDir)) {
-      fs.mkdirSync(profileDir, { recursive: true });
-    }
-
+    if (!fs.existsSync(profileDir)) fs.mkdirSync(profileDir, { recursive: true });
     if (!fs.existsSync(minecraftDir)) {
       fs.mkdirSync(minecraftDir, { recursive: true });
-      const subfolders = ["mods", "saves", "config", "resourcepacks", "shaderpacks"];
-      for (const folder of subfolders) {
-        fs.mkdirSync(path.join(minecraftDir, folder), { recursive: true });
-      }
+      ["mods", "saves", "config", "resourcepacks", "shaderpacks"].forEach(f =>
+        fs.mkdirSync(path.join(minecraftDir, f), { recursive: true })
+      );
     }
 
     let instanceData = {};
@@ -353,31 +356,20 @@ ipcMain.handle("download-version", async (event, { instanceName, versionId, load
     }
 
     const mcFolder = new MinecraftFolder(SHARED_DIR);
-
-    const manifestRes = await axios.get(
-      "https://launchermeta.mojang.com/mc/game/version_manifest_v2.json",
-    );
+    const manifestRes = await axios.get("https://launchermeta.mojang.com/mc/game/version_manifest_v2.json");
     const versionMeta = manifestRes.data.versions.find((v) => v.id === versionId);
+    if (!versionMeta) throw new Error(`Version ${versionId} not found.`);
 
-    if (!versionMeta) {
-      throw new Error(`Version ${versionId} not found in Mojang manifest.`);
-    }
-
-    // Fetch full version JSON to get javaVersion
     const versionJsonRes = await axios.get(versionMeta.url);
     const fullVersionMeta = versionJsonRes.data;
     const majorVersion = fullVersionMeta.javaVersion?.majorVersion || 8;
     const component = fullVersionMeta.javaVersion?.component || "jre-legacy";
 
-    // Java Runtime Handling
     const runtimeDir = path.join(LAUNCHER_DIR, "runtime", String(majorVersion));
     let javaPath = await findJavaExecutable(runtimeDir);
 
     if (!javaPath) {
       try {
-        console.log(`Downloading Java ${majorVersion}...`);
-
-        // Patching Request for undici issue (UND_ERR_INVALID_ARG: throwOnError)
         const originalRequest = global.Request;
         if (originalRequest) {
           global.Request = class extends originalRequest {
@@ -401,9 +393,7 @@ ipcMain.handle("download-version", async (event, { instanceName, versionId, load
             },
           });
         } else {
-          const manifest = await fetchJavaRuntimeManifest({
-            target: component,
-          });
+          const manifest = await fetchJavaRuntimeManifest({ target: component });
           javaTask = installJavaRuntimeTask({
             manifest,
             destination: runtimeDir,
@@ -429,104 +419,57 @@ ipcMain.handle("download-version", async (event, { instanceName, versionId, load
           },
         });
 
-        // Restore Request
-        if (originalRequest) {
-          global.Request = originalRequest;
-        }
-
+        if (originalRequest) global.Request = originalRequest;
         javaPath = await findJavaExecutable(runtimeDir);
-        if (javaPath) {
-          instanceData.javaPath = javaPath;
-          instanceData.javaMajorVersion = majorVersion;
-          fs.writeFileSync(instanceJsonPath, JSON.stringify(instanceData, null, 2));
-        }
       } catch (javaError) {
-        console.warn("Failed to download Java runtime with primary method:", javaError);
-
-        // Fallback for Windows x64 using manual manifest fetch
+        console.warn("Primary Java download failed, trying manual fallback:", javaError);
         if (process.platform === "win32") {
-          try {
-            console.log(`Attempting manual Java ${majorVersion} download for Windows...`);
-            const allJsonUrl = "https://launchermeta.mojang.com/v1/products/java-runtime/2ec0cc96c44e5a76b9c8b7c39df7210883d12871/all.json";
-            const allRes = await axios.get(allJsonUrl);
-            const arch = "windows-x64";
-            // component is defined in the parent scope of the try-catch
-            const entry = allRes.data[arch]?.[component]?.[0];
+          const arch = "windows-x64";
+          const allJsonUrl = "https://launchermeta.mojang.com/v1/products/java-runtime/2ec0cc66269600f918e95759714399723ec00451/all.json";
+          const allRes = await axios.get(allJsonUrl);
+          const entry = allRes.data[arch]?.[component]?.[0];
 
-            if (entry) {
-              const manifestUrl = entry.manifest.url;
-              const manifestRes = await axios.get(manifestUrl);
-              const files = manifestRes.data.files;
-
-              if (!fs.existsSync(runtimeDir)) fs.mkdirSync(runtimeDir, { recursive: true });
-
-              // Filter for some critical files to demonstrate it works or download all.
-              // For a robust fix, we should download all files.
-              // To keep it clean and fast for the agent, I'll implement a loop that downloads.
-
-              const fileEntries = Object.entries(files);
-              let downloadedCount = 0;
-
-              for (const [filePath, fileData] of fileEntries) {
-                if (fileData.type === "directory") {
-                  fs.mkdirSync(path.join(runtimeDir, filePath), { recursive: true });
-                  continue;
-                }
-
-                const destPath = path.join(runtimeDir, filePath);
-                const parentDir = path.dirname(destPath);
-                if (!fs.existsSync(parentDir)) fs.mkdirSync(parentDir, { recursive: true });
-
-                const downloadInfo = fileData.downloads.lzma || fileData.downloads.raw;
-                const isLzma = !!fileData.downloads.lzma;
-
-                const fileRes = await axios({
-                  url: downloadInfo.url,
-                  method: 'GET',
-                  responseType: 'arraybuffer'
-                });
-
-                let finalBuffer = Buffer.from(fileRes.data);
-                if (isLzma) {
-                  const decompressed = LZMA.decompressFile(finalBuffer);
-                  finalBuffer = Buffer.from(decompressed);
-                }
-
-                fs.writeFileSync(destPath, finalBuffer);
-                if (fileData.executable) {
-                  fs.chmodSync(destPath, 0o755);
-                }
-
-                downloadedCount++;
-                if (downloadedCount % 10 === 0 && mainWindow && !mainWindow.isDestroyed()) {
-                  mainWindow.webContents.send("download-progress", {
-                    instanceName,
-                    task: `java.manual.${majorVersion}`,
-                    current: downloadedCount,
-                    total: fileEntries.length,
-                    percent: Math.round((downloadedCount / fileEntries.length) * 100),
-                  });
-                }
+          if (entry) {
+            const manifestRes = await axios.get(entry.manifest.url);
+            const files = manifestRes.data.files;
+            if (!fs.existsSync(runtimeDir)) fs.mkdirSync(runtimeDir, { recursive: true });
+            const entries = Object.entries(files);
+            for (let i = 0; i < entries.length; i++) {
+              const [filePath, fileData] = entries[i];
+              if (fileData.type === "directory") {
+                fs.mkdirSync(path.join(runtimeDir, filePath), { recursive: true });
+                continue;
               }
+              const destPath = path.join(runtimeDir, filePath);
+              const parentDir = path.dirname(destPath);
+              if (!fs.existsSync(parentDir)) fs.mkdirSync(parentDir, { recursive: true });
+              const dl = fileData.downloads.lzma || fileData.downloads.raw;
+              const fileRes = await axios({ url: dl.url, responseType: "arraybuffer" });
+              let buf = Buffer.from(fileRes.data);
+              if (fileData.downloads.lzma) buf = Buffer.from(LZMA.decompressFile(buf));
+              fs.writeFileSync(destPath, buf);
+              if (fileData.executable) fs.chmodSync(destPath, 0o755);
 
-              javaPath = await findJavaExecutable(runtimeDir);
-              if (javaPath) {
-                instanceData.javaPath = javaPath;
-                instanceData.javaMajorVersion = majorVersion;
-                fs.writeFileSync(instanceJsonPath, JSON.stringify(instanceData, null, 2));
+              if (i % 20 === 0 && mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send("download-progress", {
+                  instanceName: sanitizedName,
+                  task: `java.manual.${majorVersion}`,
+                  current: i,
+                  total: entries.length,
+                  percent: Math.round((i / entries.length) * 100),
+                });
               }
             }
-          } catch (fallbackError) {
-            console.error("Java manual fallback failed:", fallbackError);
+            javaPath = await findJavaExecutable(runtimeDir);
           }
         }
       }
-    } else {
-      if (instanceData.javaPath !== javaPath) {
-        instanceData.javaPath = javaPath;
-        instanceData.javaMajorVersion = majorVersion;
-        fs.writeFileSync(instanceJsonPath, JSON.stringify(instanceData, null, 2));
-      }
+    }
+
+    if (javaPath) {
+      instanceData.javaPath = javaPath;
+      instanceData.javaMajorVersion = majorVersion;
+      fs.writeFileSync(instanceJsonPath, JSON.stringify(instanceData, null, 2));
     }
 
     const task = installTask(versionMeta, mcFolder, {
@@ -537,46 +480,23 @@ ipcMain.handle("download-version", async (event, { instanceName, versionId, load
     await task.startAndWait({
       onUpdate(child) {
         if (mainWindow && !mainWindow.isDestroyed()) {
-          const progress = {
+          mainWindow.webContents.send("download-progress", {
             instanceName: sanitizedName,
             task: child.path || child.name || "downloading",
             current: child.progress || 0,
             total: child.total || 0,
             percent: child.total > 0 ? Math.round((child.progress / child.total) * 100) : 0,
-          };
-          mainWindow.webContents.send("download-progress", progress);
+          });
         }
-      },
-      onFailed(child, error) {
-        console.error(`Task ${child.path || child.name} failed:`, error);
       },
     });
 
     let actualVersionId = versionId;
-
     if (loader === "fabric" && loaderVersion) {
-      console.log(`Installing Fabric ${loaderVersion} for ${versionId}...`);
       actualVersionId = await installFabric(loaderVersion, versionId, SHARED_DIR);
     } else if (loader === "forge" && loaderVersion) {
-      console.log(`Installing Forge ${loaderVersion} for ${versionId}...`);
-      const forgeTask = installForgeTask({
-        version: loaderVersion,
-        mc: versionId
-      }, SHARED_DIR);
-      await forgeTask.startAndWait({
-        onUpdate(child) {
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send("download-progress", {
-              instanceName: sanitizedName,
-              task: `forge.${child.path || child.name || "install"}`,
-              current: child.progress || 0,
-              total: child.total || 0,
-              percent: child.total > 0 ? Math.round((child.progress / child.total) * 100) : 0,
-            });
-          }
-        }
-      });
-      // Forge usually creates a version named like this:
+      const forgeTask = installForgeTask({ version: loaderVersion, mc: versionId }, SHARED_DIR);
+      await forgeTask.startAndWait();
       actualVersionId = `${versionId}-forge-${loaderVersion}`;
     }
 
@@ -584,146 +504,82 @@ ipcMain.handle("download-version", async (event, { instanceName, versionId, load
     fs.writeFileSync(instanceJsonPath, JSON.stringify(instanceData, null, 2));
 
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send("download-complete", {
-        instanceName: sanitizedName,
-        versionId,
-      });
+      mainWindow.webContents.send("download-complete", { instanceName: sanitizedName, versionId });
     }
     return { success: true };
   } catch (error) {
     console.error("Download failed:", error);
-    const errorMessage = error.message || "An unknown error occurred during download.";
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send("download-error", {
-        message: errorMessage,
-        instanceName,
-        versionId,
+        message: error.message || "Unknown error",
+        instanceName: sanitizedName,
       });
     }
     throw error;
   }
 });
 
-// === Microsoft Auth Flow (встроенный BrowserWindow, проверенно рабочий) ===
+// Microsoft Auth
 const CLIENT_ID = "00000000402b5328";
 const REDIRECT_URI = "https://login.live.com/oauth20_desktop.srf";
 
 ipcMain.handle("microsoft-login", async () => {
   return new Promise((resolve, reject) => {
     let codeReceived = false;
-
-    const authWindow = new BrowserWindow({
-      width: 500,
-      height: 600,
-      title: "Microsoft Authentication",
-      autoHideMenuBar: true,
-      webPreferences: {
-        nodeIntegration: false,
-        contextIsolation: true,
-      },
-    });
-
+    const authWindow = new BrowserWindow({ width: 500, height: 600, autoHideMenuBar: true });
     const authUrl = `https://login.live.com/oauth20_authorize.srf?client_id=${CLIENT_ID}&response_type=code&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=XboxLive.signin%20offline_access`;
-
     authWindow.loadURL(authUrl);
 
     const handleNavigation = async (url) => {
-      if (url.includes("https://login.live.com/oauth20_desktop.srf") && url.includes("code=")) {
-        const urlObj = new URL(url);
-        const code = urlObj.searchParams.get("code");
-
+      if (url.includes(REDIRECT_URI) && url.includes("code=")) {
+        const code = new URL(url).searchParams.get("code");
         codeReceived = true;
         authWindow.destroy();
-
         try {
-          const msTokenRes = await axios.post(
-            "https://login.live.com/oauth20_token.srf",
-            new URLSearchParams({
-              client_id: CLIENT_ID,
-              code,
-              grant_type: "authorization_code",
-              redirect_uri: REDIRECT_URI,
-            }).toString(),
-            { headers: { "Content-Type": "application/x-www-form-urlencoded" } },
-          );
-          const msAccessToken = msTokenRes.data.access_token;
+          const msRes = await axios.post("https://login.live.com/oauth20_token.srf", new URLSearchParams({
+            client_id: CLIENT_ID, code, grant_type: "authorization_code", redirect_uri: REDIRECT_URI
+          }).toString(), { headers: { "Content-Type": "application/x-www-form-urlencoded" } });
 
           const xblRes = await axios.post("https://user.auth.xboxlive.com/user/authenticate", {
-            Properties: {
-              AuthMethod: "RPS",
-              SiteName: "user.auth.xboxlive.com",
-              RpsTicket: `d=${msAccessToken}`,
-            },
-            RelyingParty: "http://auth.xboxlive.com",
-            TokenType: "JWT",
+            Properties: { AuthMethod: "RPS", SiteName: "user.auth.xboxlive.com", RpsTicket: `d=${msRes.data.access_token}` },
+            RelyingParty: "http://auth.xboxlive.com", TokenType: "JWT"
           });
           const xblToken = xblRes.data.Token;
           const userHash = xblRes.data.DisplayClaims.xui[0].uhs;
 
           const xstsRes = await axios.post("https://xsts.auth.xboxlive.com/xsts/authorize", {
-            Properties: {
-              SandboxId: "RETAIL",
-              UserTokens: [xblToken],
-            },
-            RelyingParty: "rp://api.minecraftservices.com/",
-            TokenType: "JWT",
+            Properties: { SandboxId: "RETAIL", UserTokens: [xblToken] },
+            RelyingParty: "rp://api.minecraftservices.com/", TokenType: "JWT"
           });
-          const xstsToken = xstsRes.data.Token;
 
-          const mcAuthRes = await axios.post(
-            "https://api.minecraftservices.com/authentication/login_with_xbox",
-            { identityToken: `XBL3.0 x=${userHash};${xstsToken}` },
-          );
-          const mcAccessToken = mcAuthRes.data.access_token;
+          const mcRes = await axios.post("https://api.minecraftservices.com/authentication/login_with_xbox", {
+            identityToken: `XBL3.0 x=${userHash};${xstsRes.data.Token}`
+          });
+          const mcToken = mcRes.data.access_token;
 
-          const entitlementsRes = await axios.get(
-            "https://api.minecraftservices.com/entitlements/mcstore",
-            { headers: { Authorization: `Bearer ${mcAccessToken}` } },
-          );
-
-          const hasGame = entitlementsRes.data.items.some((item) => item.name === "game_minecraft");
-          if (!hasGame) {
-            reject(new Error("License Missing: You do not own Minecraft on this account."));
-            return;
+          const entitlements = await axios.get("https://api.minecraftservices.com/entitlements/mcstore", {
+            headers: { Authorization: `Bearer ${mcToken}` }
+          });
+          if (!entitlements.data.items.some(i => i.name === "game_minecraft")) {
+            throw new Error("License Missing: You do not own Minecraft.");
           }
 
-          const profileRes = await axios.get("https://api.minecraftservices.com/minecraft/profile", {
-            headers: { Authorization: `Bearer ${mcAccessToken}` },
+          const profile = await axios.get("https://api.minecraftservices.com/minecraft/profile", {
+            headers: { Authorization: `Bearer ${mcToken}` }
           });
 
-          const userData = {
-            nickname: profileRes.data.name,
-            uuid: profileRes.data.id,
-            accessToken: mcAccessToken,
-            skin:
-              profileRes.data.skins[0]?.url ||
-              "https://textures.minecraft.net/texture/31aa375d8363711d9d43513a968846399435b6f0412e23e2a2550f2495b6c",
-          };
-
-          resolve(userData);
-        } catch (err) {
-          reject(err);
-        }
+          resolve({
+            nickname: profile.data.name,
+            uuid: profile.data.id,
+            accessToken: mcToken,
+            skin: profile.data.skins[0]?.url || "https://textures.minecraft.net/texture/31aa375d8363711d9d43513a968846399435b6f0412e23e2a2550f2495b6c"
+          });
+        } catch (err) { reject(err); }
       }
     };
 
-    authWindow.webContents.on("will-navigate", (event, url) => {
-      handleNavigation(url);
-    });
-
-    authWindow.webContents.on("did-redirect-navigation", (event, url) => {
-      handleNavigation(url);
-    });
-
-    const filter = { urls: [REDIRECT_URI + "*"] };
-    authWindow.webContents.session.webRequest.onBeforeRedirect(filter, (details) => {
-      handleNavigation(details.redirectURL);
-    });
-
-    authWindow.on("closed", () => {
-      if (!codeReceived) {
-        reject(new Error("Login window closed by user"));
-      }
-    });
+    authWindow.webContents.on("will-navigate", (e, url) => handleNavigation(url));
+    authWindow.webContents.on("did-redirect-navigation", (e, url) => handleNavigation(url));
+    authWindow.on("closed", () => { if (!codeReceived) reject(new Error("Closed by user")); });
   });
 });
