@@ -1,5 +1,6 @@
 const { app, BrowserWindow, ipcMain, shell } = require("electron");
 const path = require("path");
+const fs = require("fs");
 const axios = require("axios");
 const { MinecraftFolder } = require("@xmcl/core");
 const {
@@ -45,7 +46,7 @@ function createWindow() {
     titleBarStyle: "hidden",
     backgroundColor: "#0a0a0a",
     webPreferences: {
-      preload: path.join(__dirname, "preload.cjs"), // Правильное расширение
+      preload: path.join(__dirname, "preload.cjs"),
       sandbox: false,
       nodeIntegration: false,
       contextIsolation: true,
@@ -56,6 +57,8 @@ function createWindow() {
 
   if (isDev) {
     mainWindow.loadURL("http://localhost:5173");
+    // Optional: Open devtools
+    // mainWindow.webContents.openDevTools();
   } else {
     mainWindow.loadFile(path.join(__dirname, "../dist/index.html"));
   }
@@ -86,7 +89,7 @@ app.on("window-all-closed", function () {
   if (process.platform !== "darwin") app.quit();
 });
 
-// IPC Handlers для управления окном (Titlebar)
+// IPC Handlers
 ipcMain.on("window-minimize", () => {
   const win = BrowserWindow.getFocusedWindow();
   if (win) win.minimize();
@@ -112,9 +115,125 @@ ipcMain.handle("get-window-maximized", () => {
   return mainWindow ? mainWindow.isMaximized() : false;
 });
 
-// === Исправленный Microsoft Auth Flow без Express ===
-const CLIENT_ID = "00000000402b5328"; 
-const REDIRECT_URI = "https://login.live.com/oauth20_desktop.srf"; 
+ipcMain.handle("get-vanilla-versions", async () => {
+  try {
+    const response = await axios.get(
+      "https://launchermeta.mojang.com/mc/game/version_manifest_v2.json",
+    );
+    const { latest, versions } = response.data;
+
+    const filteredVersions = versions
+      .filter((v) => v.type === "release" || v.type === "snapshot")
+      .map((v) => ({
+        id: v.id,
+        type: v.type,
+        url: v.url,
+        releaseTime: v.releaseTime,
+      }));
+
+    return {
+      latest,
+      versions: filteredVersions,
+    };
+  } catch (error) {
+    console.error("Failed to fetch vanilla versions:", error);
+    throw new Error("Failed to fetch Minecraft versions. Please check your internet connection.");
+  }
+});
+
+ipcMain.handle("download-version", async (event, { instanceName, versionId }) => {
+  try {
+    const sanitizedName = sanitizeInstanceName(instanceName);
+    const profileDir = path.join(PROFILES_DIR, sanitizedName);
+    const minecraftDir = path.join(profileDir, ".minecraft");
+    const instanceJsonPath = path.join(profileDir, "instance.json");
+
+    // 1. Initialize profile folder
+    if (!fs.existsSync(profileDir)) {
+      fs.mkdirSync(profileDir, { recursive: true });
+    }
+
+    if (!fs.existsSync(minecraftDir)) {
+      fs.mkdirSync(minecraftDir, { recursive: true });
+      // Create subfolders
+      const subfolders = ["mods", "saves", "config", "resourcepacks", "shaderpacks"];
+      for (const folder of subfolders) {
+        fs.mkdirSync(path.join(minecraftDir, folder), { recursive: true });
+      }
+    }
+
+    if (!fs.existsSync(instanceJsonPath)) {
+      const instanceData = {
+        name: sanitizedName,
+        mcVersion: versionId,
+        loader: null,
+        loaderVersion: null,
+        createdAt: new Date().toISOString(),
+      };
+      fs.writeFileSync(instanceJsonPath, JSON.stringify(instanceData, null, 2));
+    }
+
+    // 2. Download version
+    const mcFolder = new MinecraftFolder(SHARED_DIR);
+
+    // Get version meta from manifest
+    const manifestRes = await axios.get(
+      "https://launchermeta.mojang.com/mc/game/version_manifest_v2.json",
+    );
+    const versionMeta = manifestRes.data.versions.find((v) => v.id === versionId);
+
+    if (!versionMeta) {
+      throw new Error(`Version ${versionId} not found in Mojang manifest.`);
+    }
+
+    const task = installTask(versionMeta, mcFolder, {
+      libraryDownloadConcurrency: 10,
+      assetDownloadConcurrency: 10,
+    });
+
+    await task.startAndWait({
+      onUpdate(child) {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          // Find the root task or relevant child task for progress
+          // We broadcast progress for the main task
+          const progress = {
+            task: child.path || child.name || "downloading",
+            current: child.progress || 0,
+            total: child.total || 0,
+            percent: child.total > 0 ? Math.round((child.progress / child.total) * 100) : 0,
+          };
+          mainWindow.webContents.send("download-progress", progress);
+        }
+      },
+      onFailed(child, error) {
+        console.error(`Task ${child.path || child.name} failed:`, error);
+      },
+    });
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("download-complete", {
+        instanceName: sanitizedName,
+        versionId,
+      });
+    }
+    return { success: true };
+  } catch (error) {
+    console.error("Download failed:", error);
+    const errorMessage = error.message || "An unknown error occurred during download.";
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("download-error", {
+        message: errorMessage,
+        instanceName,
+        versionId,
+      });
+    }
+    throw error;
+  }
+});
+
+// === Microsoft Auth Flow (встроенный BrowserWindow, проверенно рабочий) ===
+const CLIENT_ID = "00000000402b5328";
+const REDIRECT_URI = "https://login.live.com/oauth20_desktop.srf";
 
 ipcMain.handle("microsoft-login", async () => {
   return new Promise((resolve, reject) => {
@@ -128,15 +247,15 @@ ipcMain.handle("microsoft-login", async () => {
       autoHideMenuBar: true,
       webPreferences: {
         nodeIntegration: false,
-        contextIsolation: true
-      }
+        contextIsolation: true,
+      },
     });
 
     const authUrl = `https://login.live.com/oauth20_authorize.srf?client_id=${CLIENT_ID}&response_type=code&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=XboxLive.signin%20offline_access`;
-    
+
     authWindow.loadURL(authUrl);
 
-// Отслеживаем загрузку страниц, чтобы поймать код авторизации
+    // Отслеживаем загрузку страниц, чтобы поймать код авторизации
     const handleNavigation = async (url) => {
       if (url.includes("https://login.live.com/oauth20_desktop.srf") && url.includes("code=")) {
         const urlObj = new URL(url);
@@ -156,7 +275,7 @@ ipcMain.handle("microsoft-login", async () => {
               grant_type: "authorization_code",
               redirect_uri: REDIRECT_URI,
             }).toString(),
-            { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
+            { headers: { "Content-Type": "application/x-www-form-urlencoded" } },
           );
           const msAccessToken = msTokenRes.data.access_token;
 
@@ -187,14 +306,14 @@ ipcMain.handle("microsoft-login", async () => {
           // 4. Авторизация в Minecraft API
           const mcAuthRes = await axios.post(
             "https://api.minecraftservices.com/authentication/login_with_xbox",
-            { identityToken: `XBL3.0 x=${userHash};${xstsToken}` }
+            { identityToken: `XBL3.0 x=${userHash};${xstsToken}` },
           );
           const mcAccessToken = mcAuthRes.data.access_token;
 
           // 5. Проверка лицензии игры (Entitlements)
           const entitlementsRes = await axios.get(
             "https://api.minecraftservices.com/entitlements/mcstore",
-            { headers: { Authorization: `Bearer ${mcAccessToken}` } }
+            { headers: { Authorization: `Bearer ${mcAccessToken}` } },
           );
 
           const hasGame = entitlementsRes.data.items.some((item) => item.name === "game_minecraft");
@@ -212,7 +331,9 @@ ipcMain.handle("microsoft-login", async () => {
             nickname: profileRes.data.name,
             uuid: profileRes.data.id,
             accessToken: mcAccessToken,
-            skin: profileRes.data.skins[0]?.url || "https://textures.minecraft.net/texture/31aa375d8363711d9d43513a968846399435b6f0412e23e2a2550f2495b6c"
+            skin:
+              profileRes.data.skins[0]?.url ||
+              "https://textures.minecraft.net/texture/31aa375d8363711d9d43513a968846399435b6f0412e23e2a2550f2495b6c",
           };
 
           resolve(userData);
