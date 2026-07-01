@@ -221,6 +221,24 @@ const instanceData = JSON.parse(fs.readFileSync(instanceJsonPath, "utf-8"));
     console.error("Failed to resolve vanilla assetIndex:", e);
   }
 
+  const targetVersionJsonPath = path.join(LAUNCHER_DIR, "versions", targetVersionId, `${targetVersionId}.json`);
+  let finalVersionJsonPath = targetVersionJsonPath;
+
+  if (isModified && fs.existsSync(targetVersionJsonPath)) {
+    try {
+      const targetJson = JSON.parse(fs.readFileSync(targetVersionJsonPath, "utf-8"));
+      if (!targetJson.assetIndex && vanillaAssetIndex) {
+        console.log(`[Launcher] Merging vanilla assetIndex into modified version JSON...`);
+        const mergedJson = { ...targetJson, assetIndex: vanillaAssetIndex };
+        const tempJsonPath = path.join(LAUNCHER_DIR, "versions", targetVersionId, `${targetVersionId}.merged.json`);
+        fs.writeFileSync(tempJsonPath, JSON.stringify(mergedJson, null, 2));
+        finalVersionJsonPath = tempJsonPath;
+      }
+    } catch (err) {
+      console.error("Error during version JSON merging:", err);
+    }
+  }
+
   const opts = {
     authorization: {
       access_token: auth.accessToken,
@@ -238,9 +256,8 @@ const instanceData = JSON.parse(fs.readFileSync(instanceJsonPath, "utf-8"));
       min: instanceData.minRam || "2G",
     },
     javaPath: instanceData.javaPath,
-    skipAssetsCheck: true,
     overrides: {
-      versionJson: path.join(LAUNCHER_DIR, "versions", targetVersionId, `${targetVersionId}.json`),
+      versionJson: finalVersionJsonPath,
       library: path.join(LAUNCHER_DIR, "libraries"),
       assetRoot: path.join(LAUNCHER_DIR, "assets"),
       versionRoot: path.join(LAUNCHER_DIR, "versions"),
