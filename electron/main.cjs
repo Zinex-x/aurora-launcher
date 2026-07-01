@@ -227,13 +227,32 @@ const instanceData = JSON.parse(fs.readFileSync(instanceJsonPath, "utf-8"));
   if (isModified && fs.existsSync(targetVersionJsonPath)) {
     try {
       const targetJson = JSON.parse(fs.readFileSync(targetVersionJsonPath, "utf-8"));
-      if (!targetJson.assetIndex && vanillaAssetIndex) {
-        console.log(`[Launcher] Merging vanilla assetIndex into modified version JSON...`);
-        const mergedJson = { ...targetJson, assetIndex: vanillaAssetIndex };
-        const tempJsonPath = path.join(LAUNCHER_DIR, "versions", targetVersionId, `${targetVersionId}.merged.json`);
-        fs.writeFileSync(tempJsonPath, JSON.stringify(mergedJson, null, 2));
-        finalVersionJsonPath = tempJsonPath;
+      const vanillaJsonPath = path.join(LAUNCHER_DIR, "versions", instanceData.mcVersion, `${instanceData.mcVersion}.json`);
+
+      let vanillaJson = {};
+      if (fs.existsSync(vanillaJsonPath)) {
+        vanillaJson = JSON.parse(fs.readFileSync(vanillaJsonPath, "utf-8"));
       }
+
+      console.log(`[Launcher] Performing full inheritance merge for modified version...`);
+
+      // Combine libraries from both versions
+      const combinedLibraries = [
+        ...(vanillaJson.libraries || []),
+        ...(targetJson.libraries || [])
+      ];
+
+      const mergedJson = {
+        ...vanillaJson,
+        ...targetJson,
+        libraries: combinedLibraries,
+        assetIndex: targetJson.assetIndex || vanillaJson.assetIndex || vanillaAssetIndex
+      };
+
+      const tempJsonPath = path.join(LAUNCHER_DIR, "versions", targetVersionId, `${targetVersionId}.merged.json`);
+      fs.writeFileSync(tempJsonPath, JSON.stringify(mergedJson, null, 2));
+      finalVersionJsonPath = tempJsonPath;
+
     } catch (err) {
       console.error("Error during version JSON merging:", err);
     }
