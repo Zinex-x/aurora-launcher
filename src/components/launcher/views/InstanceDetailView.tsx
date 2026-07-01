@@ -1,23 +1,27 @@
 import { motion } from "framer-motion";
-import { Play, Package, Settings as SettingsIcon, Square, FolderOpen } from "lucide-react";
-import { useState, useEffect } from "react";
+import { Play, Package, Settings as SettingsIcon, Square, FolderOpen, Loader2, RefreshCw } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
 import { useLauncher } from "@/context/LauncherProvider";
 import { useT } from "@/context/LanguageProvider";
 import { ModloaderBadge } from "../ModloaderBadge";
 import { cn } from "@/lib/utils";
 
 export function InstanceDetailView({ id }: { id: string }) {
-  const { instances, launchInstance, killInstance, runningInstance, setInstanceSettingsOpen } = useLauncher();
+  const { instances, launchInstance, killInstance, runningInstance, isLaunching, setInstanceSettingsOpen, user, setSettingsOpen } = useLauncher();
   const { t, lang } = useT();
   const inst = instances.find((i) => i.id === id);
   const [tab, setTab] = useState<"mods">("mods");
   const [mods, setMods] = useState<string[]>([]);
 
-  useEffect(() => {
+  const refreshMods = useCallback(() => {
     if (inst && window.electron) {
       window.electron.getInstanceMods(inst.name).then(setMods);
     }
   }, [inst?.name]);
+
+  useEffect(() => {
+    refreshMods();
+  }, [refreshMods]);
 
   if (!inst) return null;
 
@@ -81,13 +85,30 @@ export function InstanceDetailView({ id }: { id: string }) {
               <motion.button
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
-                onClick={() => (isRunning ? killInstance() : launchInstance(inst.id))}
+                disabled={isLaunching && !isRunning}
+                onClick={() => {
+                  if (isRunning) {
+                    killInstance();
+                  } else {
+                    if (!user) {
+                      setSettingsOpen(true);
+                      return;
+                    }
+                    launchInstance(inst.id);
+                  }
+                }}
                 className={cn(
-                  "flex items-center justify-center gap-3 rounded-2xl px-10 py-5 font-display text-2xl font-bold tracking-widest text-primary-foreground",
+                  "flex items-center justify-center gap-3 rounded-2xl px-10 py-5 font-display text-2xl font-bold tracking-widest text-primary-foreground transition-all",
                   isRunning ? "bg-destructive glow-red" : "bg-primary glow-grass",
+                  isLaunching && !isRunning && "opacity-50 cursor-wait"
                 )}
               >
-                {isRunning ? (
+                {isLaunching && !isRunning ? (
+                  <>
+                    <Loader2 className="size-7 animate-spin" />
+                    {t("launching")}
+                  </>
+                ) : isRunning ? (
                   <>
                     <Square className="size-7 fill-current" />
                     {t("closeGame")}
@@ -141,13 +162,22 @@ export function InstanceDetailView({ id }: { id: string }) {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-bold">{t("mods")} ({mods.length})</h3>
-              <button
-                onClick={() => window.electron?.openModsFolder(inst.name)}
-                className="flex items-center gap-2 rounded-xl bg-white/5 hover:bg-white/10 px-4 py-2 text-xs font-medium transition-all"
-              >
-                <FolderOpen className="size-4" />
-                {lang === 'ru' ? 'Открыть папку модов' : 'Open Mods Folder'}
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={refreshMods}
+                  className="flex items-center gap-2 rounded-xl bg-white/5 hover:bg-white/10 px-4 py-2 text-xs font-medium transition-all"
+                >
+                  <RefreshCw className="size-4" />
+                  {lang === 'ru' ? 'Обновить' : 'Refresh'}
+                </button>
+                <button
+                  onClick={() => window.electron?.openModsFolder(inst.name)}
+                  className="flex items-center gap-2 rounded-xl bg-white/5 hover:bg-white/10 px-4 py-2 text-xs font-medium transition-all"
+                >
+                  <FolderOpen className="size-4" />
+                  {lang === 'ru' ? 'Открыть папку модов' : 'Open Mods Folder'}
+                </button>
+              </div>
             </div>
 
             {mods.length === 0 ? (

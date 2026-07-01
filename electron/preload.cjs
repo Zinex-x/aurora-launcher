@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld("electron", {
   },
   loginWithMicrosoft: () => ipcRenderer.invoke("microsoft-login"),
   getVanillaVersions: () => ipcRenderer.invoke("get-vanilla-versions"),
+  getFabricVersions: (mcVersion) => ipcRenderer.invoke("get-fabric-versions", mcVersion),
+  getForgeVersions: (mcVersion) => ipcRenderer.invoke("get-forge-versions", mcVersion),
   downloadVersion: (payload) => ipcRenderer.invoke("download-version", payload),
   getInstalledInstances: () => ipcRenderer.invoke("get-installed-instances"),
   launchGame: (payload) => ipcRenderer.invoke("launch-game", payload),

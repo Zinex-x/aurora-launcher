@@ -49,6 +49,7 @@ type Ctx = {
   launchInstance: (id: string) => Promise<void>;
   killInstance: () => Promise<void>;
   runningInstance: string | null;
+  isLaunching: boolean;
   user: User;
   setUser: (u: User) => void;
   isSettingsOpen: boolean;
@@ -91,6 +92,7 @@ export function LauncherProvider({ children }: { children: ReactNode }) {
   const [isSettingsOpen, setSettingsOpen] = useState(false);
   const [isInstanceSettingsOpen, setInstanceSettingsOpen] = useState(false);
   const [runningInstance, setRunningInstance] = useState<string | null>(null);
+  const [isLaunching, setIsLaunching] = useState(false);
   const [downloads, setDownloads] = useState<Record<string, DownloadState>>({});
 
   useEffect(() => {
@@ -153,6 +155,7 @@ export function LauncherProvider({ children }: { children: ReactNode }) {
 
     const unsubLaunched = window.electron.onGameLaunched((data) => {
       setRunningInstance(data.instanceName);
+      setIsLaunching(false);
       toast.success(`Game launched: ${data.instanceName}`);
     });
 
@@ -183,7 +186,7 @@ export function LauncherProvider({ children }: { children: ReactNode }) {
             // For now assume they are compatible or merge with local state
             setInstances(installed.map((inst: any) => ({
               ...inst,
-              id: inst.id || crypto.randomUUID(),
+              id: inst.id || window.crypto.randomUUID(),
               createdAt: inst.createdAt ? new Date(inst.createdAt).getTime() : Date.now(),
               lastPlayed: inst.lastPlayed ? new Date(inst.lastPlayed).getTime() : null,
               iconHue: inst.iconHue || (Math.abs(inst.name.split('').reduce((a:number,b:string)=>((a<<5)-a)+b.charCodeAt(0),0)) % 360)
@@ -217,7 +220,7 @@ export function LauncherProvider({ children }: { children: ReactNode }) {
 
     const inst: Instance = {
       ...i,
-      id: crypto.randomUUID(),
+      id: window.crypto.randomUUID(),
       createdAt: Date.now(),
       lastPlayed: null,
       iconHue: hue,
@@ -272,17 +275,12 @@ export function LauncherProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    if (runningInstance) {
-      toast.error("A game is already running.");
+    if (runningInstance || isLaunching) {
+      toast.error("A game is already running or launching.");
       return;
     }
 
-    if (!user) {
-      toast.info("Please login to launch the game.");
-      // We'll rely on the UI to open AuthModal, but can also trigger here if needed
-      return;
-    }
-
+    setIsLaunching(true);
     touchInstance(id);
     toast.success(`Preparing to launch ${inst.name}...`, {
       description: `Minecraft ${inst.version} (${inst.modloader})`,
@@ -299,6 +297,7 @@ export function LauncherProvider({ children }: { children: ReactNode }) {
         }
       });
     } catch (e: any) {
+      setIsLaunching(false);
       toast.error(`Failed to launch game: ${e.message}`);
     }
   };
@@ -323,6 +322,7 @@ export function LauncherProvider({ children }: { children: ReactNode }) {
         launchInstance,
         killInstance,
         runningInstance,
+        isLaunching,
         user,
         setUser: setUserState,
         isSettingsOpen,
