@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld("electron", {
   },
   loginWithMicrosoft: () => ipcRenderer.invoke("microsoft-login"),
   getVanillaVersions: () => ipcRenderer.invoke("get-vanilla-versions"),
+  checkFabricCompatibility: (mcVersion) => ipcRenderer.invoke("check-fabric-compatibility", mcVersion),
   getFabricVersions: (mcVersion) => ipcRenderer.invoke("get-fabric-versions", mcVersion),
   getForgeVersions: (mcVersion) => ipcRenderer.invoke("get-forge-versions", mcVersion),
   downloadVersion: (payload) => ipcRenderer.invoke("download-version", payload),
