@@ -236,18 +236,40 @@ const instanceData = JSON.parse(fs.readFileSync(instanceJsonPath, "utf-8"));
 
       console.log(`[Launcher] Performing full inheritance merge for modified version...`);
 
-      // Combine libraries from both versions
+      // 1. Combine libraries: Fabric/Loader libraries SHOULD come first
       const combinedLibraries = [
-        ...(vanillaJson.libraries || []),
-        ...(targetJson.libraries || [])
+        ...(targetJson.libraries || []),
+        ...(vanillaJson.libraries || [])
       ];
 
+      // 2. Combine arguments if they exist (for 1.13+)
+      const combinedArguments = {
+        game: [
+          ...(vanillaJson.arguments?.game || []),
+          ...(targetJson.arguments?.game || [])
+        ],
+        jvm: [
+          ...(vanillaJson.arguments?.jvm || []),
+          ...(targetJson.arguments?.jvm || [])
+        ]
+      };
+
+      // 3. Create the merged JSON
       const mergedJson = {
         ...vanillaJson,
         ...targetJson,
         libraries: combinedLibraries,
         assetIndex: targetJson.assetIndex || vanillaJson.assetIndex || vanillaAssetIndex
       };
+
+      // Ensure arguments are merged if present in either
+      if (vanillaJson.arguments || targetJson.arguments) {
+        mergedJson.arguments = combinedArguments;
+      }
+
+      // 4. CRITICAL: Remove inheritsFrom so MCLC doesn't try to re-resolve inheritance
+      // and accidentally overwrite our manual merge with its buggy internal logic.
+      delete mergedJson.inheritsFrom;
 
       const tempJsonPath = path.join(LAUNCHER_DIR, "versions", targetVersionId, `${targetVersionId}.merged.json`);
       fs.writeFileSync(tempJsonPath, JSON.stringify(mergedJson, null, 2));
