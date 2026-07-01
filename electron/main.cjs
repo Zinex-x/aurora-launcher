@@ -1,8 +1,39 @@
 const { app, BrowserWindow, ipcMain, shell } = require("electron");
 const path = require("path");
 const axios = require("axios");
+const { MinecraftFolder } = require("@xmcl/core");
+const {
+  installTask,
+  installVersionTask,
+  installLibrariesTask,
+  installAssetsTask,
+} = require("@xmcl/installer");
 
 let mainWindow;
+
+const LAUNCHER_DIR = path.join(app.getPath("appData"), ".aurora-launcher");
+const SHARED_DIR = LAUNCHER_DIR;
+const PROFILES_DIR = path.join(LAUNCHER_DIR, "profiles");
+
+// Ensure base directories exist
+if (!fs.existsSync(LAUNCHER_DIR)) fs.mkdirSync(LAUNCHER_DIR, { recursive: true });
+if (!fs.existsSync(PROFILES_DIR)) fs.mkdirSync(PROFILES_DIR, { recursive: true });
+
+function sanitizeInstanceName(name) {
+  if (!name || typeof name !== "string" || name.trim() === "") {
+    throw new Error("Instance name cannot be empty.");
+  }
+  const sanitized = name.trim();
+  // Windows-forbidden characters: < > : " | ? * and slashes
+  const invalidChars = /[<>:"|?*\\\/]/g;
+  if (invalidChars.test(sanitized)) {
+    throw new Error('Instance name contains invalid characters: < > : " | ? * / \\');
+  }
+  if (sanitized === "." || sanitized === "..") {
+    throw new Error("Invalid instance name.");
+  }
+  return sanitized;
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
