@@ -17,6 +17,8 @@ export function CreateInstanceView() {
   const [phase, setPhase] = useState<"form" | "progress" | "success">("form");
   const [error, setError] = useState("");
 
+  const { downloadInstance } = useLauncher();
+
   const submit = () => {
     if (!name.trim()) {
       setError(t("nameRequired"));
@@ -24,6 +26,7 @@ export function CreateInstanceView() {
     }
     setError("");
     setPhase("progress");
+    downloadInstance(name.trim(), version);
   };
 
   const onDone = () => {
@@ -110,7 +113,7 @@ export function CreateInstanceView() {
               className="space-y-6 py-6"
             >
               <h2 className="font-display text-xl font-semibold text-center">{t("creating")}</h2>
-              <ProgressInstall onDone={onDone} />
+              <ProgressInstall instanceName={name.trim()} versionId={version} onDone={onDone} />
             </motion.div>
           )}
 
