@@ -58,6 +58,47 @@ async function findJavaExecutable(baseDir) {
   return await search(baseDir, 0);
 }
 
+// Converts a Maven coordinate ("group:artifact:version[:classifier]") into the
+// relative jar path Mojang's launcher format uses, e.g.
+// "net.fabricmc:fabric-loader:0.19.3" -> "net/fabricmc/fabric-loader/0.19.3/fabric-loader-0.19.3.jar"
+function mavenNameToPath(name) {
+  const parts = name.split(":");
+  const [group, artifact, version] = parts;
+  const classifier = parts[3];
+  const fileName = classifier
+    ? `${artifact}-${version}-${classifier}.jar`
+    : `${artifact}-${version}.jar`;
+  return `${group.replace(/\./g, "/")}/${artifact}/${version}/${fileName}`;
+}
+
+// MCLC (minecraft-launcher-core) only adds a library to the classpath / downloads it
+// if it has a `downloads.artifact` field (Mojang's own format). Fabric's meta API
+// ("meta.fabricmc.net/.../profile/json", which @xmcl/installer's installFabric()
+// writes verbatim to disk) returns libraries in the legacy `{ name, url }` shape,
+// with no `downloads` field at all. MCLC silently drops those from the classpath,
+// which is why the Fabric loader classes (KnotClient etc.) never end up on -cp.
+// This patches every library missing `downloads.artifact` so MCLC will pick it up.
+function normalizeLibrariesForMCLC(libraries) {
+  if (!Array.isArray(libraries)) return libraries;
+  return libraries.map((lib) => {
+    if (!lib || !lib.name) return lib;
+    if (lib.downloads && lib.downloads.artifact) return lib; // already fine
+    return {
+      ...lib,
+      downloads: {
+        artifact: {
+          path: mavenNameToPath(lib.name),
+          // sha1/size are unknown here; MCLC only uses sha1 to decide whether to
+          // re-download an existing file, so leaving it blank just means it may
+          // re-verify/re-download once, which is harmless.
+          sha1: "",
+          size: 0,
+        },
+      },
+    };
+  });
+}
+
 function sanitizeInstanceName(name) {
   if (!name || typeof name !== "string" || name.trim() === "") {
     throw new Error("Instance name cannot be empty.");
@@ -223,6 +264,10 @@ const instanceData = JSON.parse(fs.readFileSync(instanceJsonPath, "utf-8"));
 
   const targetVersionJsonPath = path.join(LAUNCHER_DIR, "versions", targetVersionId, `${targetVersionId}.json`);
   let finalVersionJsonPath = targetVersionJsonPath;
+  // Single source of truth for the asset index id used both for downloading
+  // assets AND for the --assetIndex CLI arg. Keeping these in sync avoids the
+  // "Can't find the resource index file" error (which breaks all sounds/music).
+  let resolvedAssetIndexId = vanillaAssetIndex?.id;
 
   if (isModified && fs.existsSync(targetVersionJsonPath)) {
     try {
@@ -262,6 +307,10 @@ const instanceData = JSON.parse(fs.readFileSync(instanceJsonPath, "utf-8"));
         assetIndex: targetJson.assetIndex || vanillaJson.assetIndex || vanillaAssetIndex
       };
 
+      // Keep the CLI-arg id in sync with whatever assetIndex actually ended up
+      // in the merged json (mirrors the priority order used just above).
+      resolvedAssetIndexId = mergedJson.assetIndex?.id || resolvedAssetIndexId;
+
       // Ensure arguments are merged if present in either
       if (vanillaJson.arguments || targetJson.arguments) {
         mergedJson.arguments = combinedArguments;
@@ -277,6 +326,15 @@ const instanceData = JSON.parse(fs.readFileSync(instanceJsonPath, "utf-8"));
 
     } catch (err) {
       console.error("Error during version JSON merging:", err);
+    }
+  } else if (fs.existsSync(targetVersionJsonPath)) {
+    // Pure vanilla (non-modified) launch: use the version's own assetIndex id
+    // if present, so it matches whatever id the assets were downloaded under.
+    try {
+      const plainJson = JSON.parse(fs.readFileSync(targetVersionJsonPath, "utf-8"));
+      resolvedAssetIndexId = plainJson.assetIndex?.id || resolvedAssetIndexId;
+    } catch (e) {
+      console.error("Failed to read version json for assetIndex id:", e);
     }
   }
 
@@ -299,13 +357,13 @@ const instanceData = JSON.parse(fs.readFileSync(instanceJsonPath, "utf-8"));
     javaPath: instanceData.javaPath,
     overrides: {
       versionJson: finalVersionJsonPath,
-      library: path.join(LAUNCHER_DIR, "libraries"),
+      libraryRoot: path.join(LAUNCHER_DIR, "libraries"),
       assetRoot: path.join(LAUNCHER_DIR, "assets"),
       versionRoot: path.join(LAUNCHER_DIR, "versions"),
       gameDirectory: minecraftDir,
       minecraftJar: path.join(LAUNCHER_DIR, "versions", instanceData.mcVersion, `${instanceData.mcVersion}.jar`),
 
-      assetIndex: vanillaAssetIndex,
+      assetIndex: resolvedAssetIndexId,
     },
   };
   try {
@@ -641,6 +699,35 @@ ipcMain.handle("download-version", async (event, { instanceName, versionId, load
           version: fVersion,
           minecraft: SHARED_DIR,
         });
+
+        // installFabric() writes the raw meta.fabricmc.net JSON to disk, whose
+        // libraries are in the legacy { name, url } shape that MCLC ignores.
+        // Rewrite the file with MCLC-compatible library entries, and actually
+        // download the fabric-loader/intermediary jars (installFabric only
+        // writes the JSON, it never downloads the library jars themselves).
+        const fabricJsonPath = path.join(SHARED_DIR, "versions", actualVersionId, `${actualVersionId}.json`);
+        if (fs.existsSync(fabricJsonPath)) {
+          const fabricJson = JSON.parse(fs.readFileSync(fabricJsonPath, "utf-8"));
+          fabricJson.libraries = normalizeLibrariesForMCLC(fabricJson.libraries);
+          fs.writeFileSync(fabricJsonPath, JSON.stringify(fabricJson, null, 2));
+
+          console.log(`[Launcher] Downloading ${fabricJson.libraries.length} Fabric loader libraries...`);
+          const librariesDir = path.join(SHARED_DIR, "libraries");
+          for (const lib of fabricJson.libraries) {
+            if (!lib.downloads?.artifact?.path) continue;
+            const destPath = path.join(librariesDir, lib.downloads.artifact.path);
+            if (fs.existsSync(destPath)) continue;
+            const baseUrl = (lib.url || "https://maven.fabricmc.net/").replace(/\/?$/, "/");
+            const dlUrl = `${baseUrl}${lib.downloads.artifact.path}`;
+            try {
+              fs.mkdirSync(path.dirname(destPath), { recursive: true });
+              const res = await axios({ url: dlUrl, responseType: "arraybuffer" });
+              fs.writeFileSync(destPath, Buffer.from(res.data));
+            } catch (libDlErr) {
+              console.error(`Failed to download Fabric library ${lib.name} from ${dlUrl}:`, libDlErr.message);
+            }
+          }
+        }
 
         console.log(`Fabric installed successfully. Generated version ID: ${actualVersionId}`);
       } catch (fabricErr) {
