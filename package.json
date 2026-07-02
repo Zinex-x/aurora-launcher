@@ -1,5 +1,9 @@
 {
-  "name": "tanstack_start_ts",
+  "name": "electron-launcher",
+  "productName": "Electron Launcher",
+  "version": "1.0.0",
+  "author": "Zinex",
+  "description": "Молодёжный браузер для Minecraft",
   "private": true,
   "sideEffects": false,
   "type": "module",
@@ -11,7 +15,8 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "electron:dev": "electron ."
+    "electron:dev": "electron .",
+    "electron:build": "vite build && electron-builder"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
