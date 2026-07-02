@@ -132,14 +132,14 @@ export function InstanceSettingsModal() {
 
                   <section className="mt-auto pt-10 border-t border-white/5">
                     <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-destructive">
-                      {t("dangerZone") || "Danger Zone"}
+                      {t("dangerZone")}
                     </h3>
                     <button
                       onClick={() => setShowDeleteConfirm(true)}
                       className="flex w-full items-center justify-center gap-2 rounded-xl bg-destructive/10 border border-destructive/20 py-3 text-sm font-semibold text-destructive hover:bg-destructive hover:text-destructive-foreground transition-all"
                     >
                       <Trash2 className="size-4" />
-                      {t("deleteInstance") || "Delete Instance"}
+                      {t("deleteInstance")}
                     </button>
                   </section>
                 </div>
@@ -195,10 +195,10 @@ export function InstanceSettingsModal() {
                   <AlertTriangle className="size-8" />
                 </div>
                 <h3 className="mb-2 text-xl font-bold">
-                  {t("deleteInstance") || "Delete Instance"}
+                  {t("deleteInstance")}
                 </h3>
                 <p className="mb-6 text-sm text-muted-foreground">
-                  {t("deleteConfirmation") || "Are you sure you want to delete this instance? This action cannot be undone."}
+                  {t("deleteConfirmation")}
                 </p>
                 <div className="flex gap-3">
                   <button
