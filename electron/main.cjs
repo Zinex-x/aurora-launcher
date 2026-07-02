@@ -200,6 +200,14 @@ ipcMain.handle("update-instance-config", async (event, { instanceName, config })
   throw new Error("Instance not found");
 });
 
+ipcMain.handle("delete-instance", async (event, instanceName) => {
+  const sanitizedName = sanitizeInstanceName(instanceName);
+  const profileDir = path.join(PROFILES_DIR, sanitizedName);
+  if (!fs.existsSync(profileDir)) throw new Error("Instance not found");
+  fs.rmSync(profileDir, { recursive: true, force: true });
+  return { success: true };
+});
+
 ipcMain.handle("get-instance-mods", async (event, instanceName) => {
   const modsDir = path.join(PROFILES_DIR, instanceName, ".minecraft", "mods");
   if (!fs.existsSync(modsDir)) return [];

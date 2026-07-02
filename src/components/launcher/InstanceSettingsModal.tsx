@@ -5,7 +5,8 @@ import {
   Settings2,
   Cpu,
   User,
-  Check,
+  Trash2,
+  AlertTriangle,
   type LucideIcon,
 } from "lucide-react";
 import { useLauncher } from "@/context/LauncherProvider";
@@ -16,9 +17,10 @@ import { Slider } from "@/components/ui/slider";
 type Category = "general" | "memory";
 
 export function InstanceSettingsModal() {
-  const { isInstanceSettingsOpen, setInstanceSettingsOpen, view, instances, updateInstance } = useLauncher();
+  const { isInstanceSettingsOpen, setInstanceSettingsOpen, view, instances, updateInstance, deleteInstance } = useLauncher();
   const { t } = useT();
   const [activeCategory, setActiveCategory] = useState<Category>("general");
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const instId = view.kind === "instance" ? view.id : null;
   const inst = instances.find((i) => i.id === instId);
@@ -32,6 +34,9 @@ export function InstanceSettingsModal() {
   useEffect(() => {
     if (inst) {
       setLocalRam(parseInt(inst.maxRam || "4096") || 4096);
+    }
+    if (!isInstanceSettingsOpen) {
+      setShowDeleteConfirm(false);
     }
   }, [inst?.id, isInstanceSettingsOpen]);
 
@@ -111,16 +116,31 @@ export function InstanceSettingsModal() {
               </h2>
 
               {activeCategory === "general" && (
-                <div className="space-y-6">
-                  <section>
-                    <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-                      {t("instanceName")}
+                <div className="flex h-full flex-col justify-between">
+                  <div className="space-y-6">
+                    <section>
+                      <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+                        {t("instanceName")}
+                      </h3>
+                      <input
+                        type="text"
+                        defaultValue={inst.name}
+                        className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                      />
+                    </section>
+                  </div>
+
+                  <section className="mt-auto pt-10 border-t border-white/5">
+                    <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-destructive">
+                      {t("dangerZone") || "Danger Zone"}
                     </h3>
-                    <input
-                      type="text"
-                      defaultValue={inst.name}
-                      className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                    />
+                    <button
+                      onClick={() => setShowDeleteConfirm(true)}
+                      className="flex w-full items-center justify-center gap-2 rounded-xl bg-destructive/10 border border-destructive/20 py-3 text-sm font-semibold text-destructive hover:bg-destructive hover:text-destructive-foreground transition-all"
+                    >
+                      <Trash2 className="size-4" />
+                      {t("deleteInstance") || "Delete Instance"}
+                    </button>
                   </section>
                 </div>
               )}
@@ -155,6 +175,49 @@ export function InstanceSettingsModal() {
             </motion.div>
           </AnimatePresence>
         </div>
+
+        {/* Confirmation Overlay */}
+        <AnimatePresence>
+          {showDeleteConfirm && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 z-[60] flex items-center justify-center bg-background/60 backdrop-blur-sm p-6"
+            >
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                className="max-w-sm w-full glass-panel-strong border-destructive/20 p-8 text-center"
+              >
+                <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+                  <AlertTriangle className="size-8" />
+                </div>
+                <h3 className="mb-2 text-xl font-bold">
+                  {t("deleteInstance") || "Delete Instance"}
+                </h3>
+                <p className="mb-6 text-sm text-muted-foreground">
+                  {t("deleteConfirmation") || "Are you sure you want to delete this instance? This action cannot be undone."}
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setShowDeleteConfirm(false)}
+                    className="flex-1 rounded-xl bg-white/5 py-2.5 text-sm font-medium hover:bg-white/10 transition-all"
+                  >
+                    {t("cancel")}
+                  </button>
+                  <button
+                    onClick={() => deleteInstance(inst.id)}
+                    className="flex-1 rounded-xl bg-destructive py-2.5 text-sm font-bold text-destructive-foreground shadow-lg shadow-destructive/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
+                  >
+                    {t("delete")}
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </motion.div>
     </div>
   );

@@ -9,7 +9,7 @@ import { ProgressInstall } from "../ProgressInstall";
 
 export function CreateInstanceView() {
   const { t } = useT();
-  const { addInstance, setView, user, setSettingsOpen } = useLauncher();
+  const { addInstance, setView, user, setAuthModalOpen } = useLauncher();
   const [name, setName] = useState("");
   const [allVersions, setAllVersions] = useState<any[]>([]);
   const [showAll, setShowAll] = useState(false);
@@ -42,7 +42,7 @@ export function CreateInstanceView() {
       return;
     }
     if (!user) {
-      setSettingsOpen(true);
+      setAuthModalOpen(true);
       return;
     }
 
@@ -145,7 +145,10 @@ export function CreateInstanceView() {
 
               <button
                 onClick={submit}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3.5 text-base font-semibold text-primary-foreground glow-grass transition-transform hover:scale-[1.01] active:scale-[0.99]"
+                className={cn(
+                  "flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3.5 text-base font-semibold text-primary-foreground glow-grass transition-transform",
+                  !user ? "opacity-50 grayscale cursor-not-allowed" : "hover:scale-[1.01] active:scale-[0.99]"
+                )}
               >
                 <Sparkles className="size-4" />
                 {t("createBtn")}

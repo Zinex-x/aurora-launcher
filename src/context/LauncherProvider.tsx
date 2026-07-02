@@ -56,8 +56,11 @@ type Ctx = {
   setSettingsOpen: (open: boolean) => void;
   isInstanceSettingsOpen: boolean;
   setInstanceSettingsOpen: (open: boolean) => void;
+  isAuthModalOpen: boolean;
+  setAuthModalOpen: (open: boolean) => void;
   downloads: Record<string, DownloadState>;
   downloadInstance: (instanceName: string, versionId: string, loader?: Modloader) => Promise<void>;
+  deleteInstance: (id: string) => Promise<void>;
 };
 
 const LauncherContext = createContext<Ctx | null>(null);
@@ -91,6 +94,7 @@ export function LauncherProvider({ children }: { children: ReactNode }) {
   const [user, setUserState] = useState<User>(null);
   const [isSettingsOpen, setSettingsOpen] = useState(false);
   const [isInstanceSettingsOpen, setInstanceSettingsOpen] = useState(false);
+  const [isAuthModalOpen, setAuthModalOpen] = useState(false);
   const [runningInstance, setRunningInstance] = useState<string | null>(null);
   const [isLaunching, setIsLaunching] = useState(false);
   const [downloads, setDownloads] = useState<Record<string, DownloadState>>({});
@@ -310,6 +314,23 @@ export function LauncherProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const deleteInstance = async (id: string) => {
+    const inst = instances.find((i) => i.id === id);
+    if (!inst) return;
+
+    try {
+      if (window.electron) {
+        await window.electron.deleteInstance(inst.name);
+      }
+      setInstances((prev) => prev.filter((i) => i.id !== id));
+      setInstanceSettingsOpen(false);
+      setView({ kind: "library" });
+      toast.success(`Instance ${inst.name} deleted.`);
+    } catch (e: any) {
+      toast.error(`Failed to delete instance: ${e.message}`);
+    }
+  };
+
   return (
     <LauncherContext.Provider
       value={{
@@ -329,8 +350,11 @@ export function LauncherProvider({ children }: { children: ReactNode }) {
         setSettingsOpen,
         isInstanceSettingsOpen,
         setInstanceSettingsOpen,
+        isAuthModalOpen,
+        setAuthModalOpen,
         downloads,
         downloadInstance,
+        deleteInstance,
       }}
     >
       {children}

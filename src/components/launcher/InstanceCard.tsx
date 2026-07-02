@@ -14,7 +14,7 @@ export function InstanceCard({
   onClick: () => void;
   onPlay?: () => void;
 }) {
-  const { runningInstance, isLaunching, killInstance } = useLauncher();
+  const { runningInstance, isLaunching, killInstance, user, setAuthModalOpen } = useLauncher();
   const { t } = useT();
   const hue = instance.iconHue;
   return (
@@ -57,6 +57,10 @@ export function InstanceCard({
                 if (runningInstance === instance.name) {
                   killInstance();
                 } else {
+                  if (!user) {
+                    setAuthModalOpen(true);
+                    return;
+                  }
                   onPlay();
                 }
               }}
@@ -64,7 +68,8 @@ export function InstanceCard({
                 "flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-all",
                 runningInstance === instance.name
                   ? "bg-destructive text-destructive-foreground glow-red"
-                  : "bg-primary text-primary-foreground glow-grass"
+                  : "bg-primary text-primary-foreground glow-grass",
+                !user && runningInstance !== instance.name && "opacity-50 grayscale cursor-not-allowed"
               )}
             >
               {isLaunching && runningInstance === null ? (

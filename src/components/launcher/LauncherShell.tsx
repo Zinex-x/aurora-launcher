@@ -11,10 +11,11 @@ import { InstanceDetailView } from "./views/InstanceDetailView";
 import { useLauncher } from "@/context/LauncherProvider";
 import { SettingsModal } from "./SettingsModal";
 import { InstanceSettingsModal } from "./InstanceSettingsModal";
+import { AuthModal } from "./AuthModal";
 import bgImg from "@/assets/launcher-bg.jpg";
 
 export function LauncherShell() {
-  const { view } = useLauncher();
+  const { view, isAuthModalOpen, setAuthModalOpen } = useLauncher();
   const { t } = useT();
   const viewKey = view.kind === "instance" ? `instance:${view.id}` : view.kind;
 
@@ -67,6 +68,7 @@ export function LauncherShell() {
       <Dock />
       <SettingsModal />
       <InstanceSettingsModal />
+      <AuthModal open={isAuthModalOpen} onOpenChange={setAuthModalOpen} />
     </div>
   );
 }
