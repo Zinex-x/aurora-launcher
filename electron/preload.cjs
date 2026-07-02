@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld("electron", {
     return () => ipcRenderer.removeListener("window-maximized", subscription);
   },
   loginWithMicrosoft: () => ipcRenderer.invoke("microsoft-login"),
+  loginOffline: (username) => ipcRenderer.invoke("auth-offline", username),
   getVanillaVersions: () => ipcRenderer.invoke("get-vanilla-versions"),
   checkFabricCompatibility: (mcVersion) => ipcRenderer.invoke("check-fabric-compatibility", mcVersion),
   getFabricVersions: (mcVersion) => ipcRenderer.invoke("get-fabric-versions", mcVersion),

@@ -2,7 +2,7 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { useT } from "@/context/LanguageProvider";
 import { useLauncher } from "@/context/LauncherProvider";
 import { cn } from "@/lib/utils";
-import { Loader2, LogIn } from "lucide-react";
+import { Loader2, LogIn, User } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -16,6 +16,7 @@ export function AuthModal({
   const { t } = useT();
   const { setUser } = useLauncher();
   const [isAuthenticating, setIsAuthenticating] = useState(false);
+  const [offlineName, setOfflineName] = useState("");
 
   const handleMicrosoftLogin = async () => {
     if (!window.electron) {
@@ -42,9 +43,26 @@ export function AuthModal({
     }
   };
 
-  const testLogin = () => {
-    setUser({ nickname: "Steve" });
-    onOpenChange(false);
+  const handleOfflineLogin = async () => {
+    if (!offlineName.trim()) {
+      toast.error("Username required");
+      return;
+    }
+    if (!window.electron) return;
+
+    try {
+      setIsAuthenticating(true);
+      const res = await window.electron.loginOffline(offlineName);
+      if (res.success) {
+        setUser(res.user);
+        onOpenChange(false);
+        toast.success(`${t("welcome")}, ${res.user.nickname}!`);
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Offline login failed");
+    } finally {
+      setIsAuthenticating(false);
+    }
   };
 
   return (
@@ -100,13 +118,33 @@ export function AuthModal({
               )}
             </button>
 
-            <button
-              disabled={isAuthenticating}
-              onClick={testLogin}
-              className="rounded-xl border border-white/10 bg-white/5 py-2.5 text-xs font-medium text-muted-foreground hover:bg-white/10 hover:text-foreground transition-all disabled:opacity-30"
-            >
-              Skip (Developer Test)
-            </button>
+            <div className="relative mt-2">
+              <div className="absolute inset-x-0 top-1/2 h-px bg-white/10" />
+              <span className="relative bg-card px-3 text-[10px] uppercase tracking-widest text-muted-foreground">
+                or
+              </span>
+            </div>
+
+            <div className="space-y-3">
+              <div className="relative">
+                <User className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  type="text"
+                  placeholder={t("enterNickname")}
+                  value={offlineName}
+                  onChange={(e) => setOfflineName(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleOfflineLogin()}
+                  className="w-full rounded-xl border border-white/10 bg-white/5 py-3 pl-10 pr-4 text-sm outline-none focus:border-primary/50 focus:bg-white/10 transition-all"
+                />
+              </div>
+              <button
+                disabled={isAuthenticating || !offlineName.trim()}
+                onClick={handleOfflineLogin}
+                className="w-full rounded-xl border border-white/10 bg-white/5 py-3 text-sm font-semibold text-muted-foreground hover:bg-white/10 hover:text-foreground transition-all disabled:opacity-30"
+              >
+                {t("playOffline")}
+              </button>
+            </div>
           </div>
         </div>
       </DialogContent>

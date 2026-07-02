@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, shell } = require("electron");
 const path = require("path");
 const fs = require("fs");
+const crypto = require("crypto");
 const axios = require("axios");
 const { MinecraftFolder } = require("@xmcl/core");
 const {
@@ -844,4 +845,31 @@ ipcMain.handle("microsoft-login", async () => {
     authWindow.webContents.on("did-redirect-navigation", (e, url) => handleNavigation(url));
     authWindow.on("closed", () => { if (!codeReceived) reject(new Error("Closed by user")); });
   });
+});
+
+ipcMain.handle("auth-offline", async (event, username) => {
+  if (!username || typeof username !== "string" || username.trim() === "") {
+    throw new Error("Username cannot be empty.");
+  }
+  const cleanName = username.trim();
+  // Generate a stable MD5-based UUID for the offline user
+  const hash = crypto.createHash("md5").update(`OfflinePlayer:${cleanName}`).digest("hex");
+  const fakeUuid = [
+    hash.substring(0, 8),
+    hash.substring(8, 12),
+    hash.substring(12, 16),
+    hash.substring(16, 20),
+    hash.substring(20, 32)
+  ].join("-");
+
+  return {
+    success: true,
+    user: {
+      nickname: cleanName,
+      uuid: fakeUuid,
+      accessToken: "offlineToken12345",
+      skin: "https://textures.minecraft.net/texture/31aa375d8363711d9d43513a968846399435b6f0412e23e2a2550f2495b6c",
+      isOffline: true
+    }
+  };
 });
