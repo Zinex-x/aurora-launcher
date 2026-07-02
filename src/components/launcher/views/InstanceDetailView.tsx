@@ -7,7 +7,7 @@ import { ModloaderBadge } from "../ModloaderBadge";
 import { cn } from "@/lib/utils";
 
 export function InstanceDetailView({ id }: { id: string }) {
-  const { instances, launchInstance, killInstance, runningInstance, isLaunching, setInstanceSettingsOpen, user, setSettingsOpen } = useLauncher();
+  const { instances, launchInstance, killInstance, runningInstance, isLaunching, setInstanceSettingsOpen, user, setAuthModalOpen } = useLauncher();
   const { t, lang } = useT();
   const inst = instances.find((i) => i.id === id);
   const [tab, setTab] = useState<"mods">("mods");
@@ -83,15 +83,15 @@ export function InstanceDetailView({ id }: { id: string }) {
               </motion.button>
 
               <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
+                whileHover={!user && !isRunning ? {} : { scale: 1.02 }}
+                whileTap={!user && !isRunning ? {} : { scale: 0.98 }}
                 disabled={isLaunching && !isRunning}
                 onClick={() => {
                   if (isRunning) {
                     killInstance();
                   } else {
                     if (!user) {
-                      setSettingsOpen(true);
+                      setAuthModalOpen(true);
                       return;
                     }
                     launchInstance(inst.id);
@@ -100,7 +100,8 @@ export function InstanceDetailView({ id }: { id: string }) {
                 className={cn(
                   "flex items-center justify-center gap-3 rounded-2xl px-10 py-5 font-display text-2xl font-bold tracking-widest text-primary-foreground transition-all",
                   isRunning ? "bg-destructive glow-red" : "bg-primary glow-grass",
-                  isLaunching && !isRunning && "opacity-50 cursor-wait"
+                  isLaunching && !isRunning && "opacity-50 cursor-wait",
+                  !user && !isRunning && "opacity-50 grayscale cursor-not-allowed"
                 )}
               >
                 {isLaunching && !isRunning ? (

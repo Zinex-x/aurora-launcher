@@ -1,26 +1,20 @@
-import { useState } from "react";
 import { LogIn } from "lucide-react";
 import { useLauncher } from "@/context/LauncherProvider";
 import { useT } from "@/context/LanguageProvider";
-import { AuthModal } from "./AuthModal";
 
 export function AuthZone() {
-  const { user, setUser } = useLauncher();
+  const { user, setUser, setAuthModalOpen } = useLauncher();
   const { t } = useT();
-  const [open, setOpen] = useState(false);
 
   if (!user) {
     return (
-      <>
-        <button
-          onClick={() => setOpen(true)}
-          className="flex items-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-sm font-medium backdrop-blur-md transition-colors hover:bg-white/10"
-        >
-          <LogIn className="size-4" />
-          {t("login")}
-        </button>
-        <AuthModal open={open} onOpenChange={setOpen} />
-      </>
+      <button
+        onClick={() => setAuthModalOpen(true)}
+        className="flex items-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-sm font-medium backdrop-blur-md transition-colors hover:bg-white/10"
+      >
+        <LogIn className="size-4" />
+        {t("login")}
+      </button>
     );
   }
 

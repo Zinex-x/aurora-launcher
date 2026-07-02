@@ -22,6 +22,7 @@ contextBridge.exposeInMainWorld("electron", {
   updateInstanceConfig: (payload) => ipcRenderer.invoke("update-instance-config", payload),
   getInstanceMods: (instanceName) => ipcRenderer.invoke("get-instance-mods", instanceName),
   openModsFolder: (instanceName) => ipcRenderer.invoke("open-mods-folder", instanceName),
+  deleteInstance: (instanceName) => ipcRenderer.invoke("delete-instance", instanceName),
   onDownloadProgress: (callback) => {
     const subscription = (event, data) => callback(data);
     ipcRenderer.on("download-progress", subscription);
