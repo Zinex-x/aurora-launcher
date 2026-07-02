@@ -88,7 +88,7 @@ export function AuthModal({
 
           <div className="space-y-2">
             <h2 className="font-display text-2xl font-bold tracking-tight">
-              {isAuthenticating ? t("waitingAuth") : t("loginTitle") || "Authentication"}
+              {isAuthenticating ? t("waitingAuth") : t("Войдите в свой аккаунт") || "Authentication"}
             </h2>
             <p className="text-sm text-muted-foreground max-w-[280px]">
               {isAuthenticating
