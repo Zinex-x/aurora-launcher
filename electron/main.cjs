@@ -19,9 +19,53 @@ const {
 } = require("@xmcl/installer");
 const LZMA = require("lzma-purejs");
 const { Client } = require("minecraft-launcher-core");
+const { Client: DiscordRPC } = require("@xhayper/discord-rpc");
 
 let mainWindow;
 let currentProcess = null;
+
+// ---- Discord Rich Presence ----
+const DISCORD_CLIENT_ID = "1522142082570125472";
+
+const rpc = new DiscordRPC({
+  clientId: DISCORD_CLIENT_ID,
+});
+
+let rpcReady = false;
+const appStartTimestamp = new Date();
+
+rpc.on("ready", () => {
+  rpcReady = true;
+  console.log("[Discord RPC] Connected as", rpc.user?.username);
+  setIdleActivity();
+});
+
+rpc.login().catch((err) => {
+  console.warn("[Discord RPC] Failed to connect (Discord not running?):", err.message);
+});
+
+function setIdleActivity() {
+  if (!rpcReady) return;
+  rpc.user?.setActivity({
+    details: "В главном меню",
+    state: "Idling",
+    largeImageKey: "launcher_icon",
+    largeImageText: "Aurora Launcher",
+    startTimestamp: appStartTimestamp,
+  });
+}
+
+function setPlayingActivity(instanceName) {
+  if (!rpcReady) return;
+  rpc.user?.setActivity({
+    details: "Играет в Minecraft",
+    state: instanceName,
+    largeImageKey: "launcher_icon",
+    largeImageText: "Aurora Launcher",
+    startTimestamp: new Date(),
+  });
+}
+// ---- /Discord Rich Presence ----
 
 const LAUNCHER_DIR = path.join(app.getPath("appData"), ".aurora-launcher");
 const SHARED_DIR = LAUNCHER_DIR;
@@ -134,7 +178,7 @@ function createWindow() {
 
   const isDev = process.env.NODE_ENV === "development" || !app.isPackaged;
 
-  if (isDev) {
+  if (!app.isPackaged) {
     mainWindow.loadURL("http://localhost:5173");
   } else {
     mainWindow.loadFile(path.join(__dirname, "../dist/index.html"));
@@ -163,6 +207,12 @@ app.whenReady().then(() => {
 
 app.on("window-all-closed", function () {
   if (process.platform !== "darwin") app.quit();
+});
+
+app.on("before-quit", () => {
+  if (rpcReady) {
+    rpc.destroy().catch(() => {});
+  }
 });
 
 // IPC Handlers
@@ -389,11 +439,13 @@ const instanceData = JSON.parse(fs.readFileSync(instanceJsonPath, "utf-8"));
     });
 
     currentProcess = await launcher.launch(opts);
+    setPlayingActivity(instanceData.name || instanceName);
 
     if (currentProcess) {
       currentProcess.on("close", (code) => {
         console.log(`Game exited with code ${code}`);
         currentProcess = null;
+        setIdleActivity();
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send("game-exited", { instanceName });
         }
